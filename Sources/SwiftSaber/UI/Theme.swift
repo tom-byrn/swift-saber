@@ -83,21 +83,24 @@ struct NeonButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .font(Theme.heading(prominent ? 24 : 19))
-                .tracking(1.5)
+                .tracking(width == nil ? 1.5 : 0.8)
                 .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .foregroundStyle(.white)
-                .padding(.horizontal, 26)
+                .padding(.horizontal, width == nil ? 26 : 10)
                 .padding(.vertical, prominent ? 14 : 10)
                 .frame(width: width)
                 .background(
+                    // The glow lives on the shape only, so the label text stays crisp.
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(color.opacity(prominent ? (hovering ? 0.55 : 0.4) : (hovering ? 0.28 : 0.12)))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(color.opacity(hovering ? 1 : 0.7), lineWidth: 1.5)
+                        )
+                        .shadow(color: color.opacity(hovering ? 0.8 : 0.35), radius: hovering ? 14 : 7)
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(color.opacity(hovering ? 1 : 0.7), lineWidth: 1.5)
-                )
-                .shadow(color: color.opacity(hovering ? 0.9 : 0.4), radius: hovering ? 16 : 8)
                 .scaleEffect(configuration.isPressed ? 0.97 : (hovering ? 1.03 : 1))
                 .opacity(enabled ? 1 : 0.35)
                 .animation(.easeOut(duration: 0.15), value: hovering)

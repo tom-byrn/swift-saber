@@ -22,6 +22,10 @@ This compiles a release build, assembles and ad-hoc signs `build/Swift Saber.app
 
 The first launch renders the soundtrack (a few seconds) and caches it. Later launches are instant.
 
+**Prebuilt app:** every push is built on a macOS runner by GitHub Actions (`.github/workflows/build.yml`). Download the `SwiftSaber-app` artifact from the latest run, unzip it, then right-click › Open the first time (it's ad-hoc signed). The same workflow runs the unit tests and launches the game in autoplay mode to capture screenshots of every screen (`SwiftSaber-captures` artifact).
+
+**Watch Demo:** the level select has a *Watch Demo* button that plays the selected map with perfect autoplay sabers, so you can see how a map flows before trying it.
+
 ## Setting up your AirPods
 
 1. **Connect your AirPods** (Pro / Max / 3rd gen or newer, anything with spatial audio head tracking) to the Mac.
