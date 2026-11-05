@@ -26,3 +26,19 @@ jobs:
         with:
           name: SwiftSaber-app
           path: build/SwiftSaber.zip
+      - name: Smoke test (autoplay demo + screenshots)
+        continue-on-error: true
+        run: |
+          mkdir -p captures
+          "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 150); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+          if kill -0 $PID 2>/dev/null; then echo "app still running, killing"; kill $PID; fi
+          wait $PID; echo "exit code: $?"
+          tail -40 captures/app.log
+          ls -la captures
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SwiftSaber-captures
+          path: captures/

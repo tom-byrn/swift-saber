@@ -87,10 +87,13 @@ struct LevelSelectView: View {
                 }
             }
 
-            Button("Start") { model.startLevel() }
-                .buttonStyle(NeonButtonStyle(color: Theme.blue, prominent: true, width: 260))
-                .disabled(model.availableHands.isEmpty)
-                .keyboardShortcut(.defaultAction)
+            HStack(spacing: 18) {
+                Button("Watch Demo") { model.startDemo() }
+                    .buttonStyle(NeonButtonStyle(color: .white, width: 200))
+                Button("Start") { model.startLevel() }
+                    .buttonStyle(NeonButtonStyle(color: Theme.blue, prominent: true, width: 260))
+                    .disabled(model.availableHands.isEmpty)
+            }
         }
         .padding(50)
         .frame(maxWidth: 1100)

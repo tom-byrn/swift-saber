@@ -17,6 +17,7 @@ struct HUDSnapshot: Equatable {
     var duration = 1.0
     var warning: String?
     var noFail = false
+    var autoplay = false
 }
 
 /// SCNView that enables mouse-moved events for its window.
@@ -90,6 +91,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     private var cameraShakeEnabled = true
     private var gameOverSent = false
     private var noFail = false
+    private var autoplay: AutoplayDriver?
     private let cameraBase = Arena.cameraPosition.simd
 
     init(input: InputHub, audio: GameAudio) {
@@ -166,8 +168,9 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
 
     // MARK: Game control (main thread)
 
-    func prepare(beatmap: Beatmap, config: SessionConfig, primaryHand: Hand) {
+    func prepare(beatmap: Beatmap, config: SessionConfig, primaryHand: Hand, autoplay useAutoplay: Bool = false) {
         lock.lock(); defer { lock.unlock() }
+        autoplay = useAutoplay ? AutoplayDriver(beatmap: beatmap, primaryHand: primaryHand) : nil
         clearNotes()
         effects.clear()
         session = GameSession(beatmap: beatmap, config: config)
@@ -224,6 +227,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         clearNotes()
         effects.clear()
         session = nil
+        autoplay = nil
         mode = .menu
         stage.idle()
     }
@@ -233,6 +237,9 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         lock.lock(); defer { lock.unlock() }
         session?.resetTracking()
     }
+
+    /// Renders the 3D scene (without the SwiftUI overlay) to an image. Main thread only.
+    func snapshot() -> NSImage { view.snapshot() }
 
     private func clearNotes() {
         for n in noteNodes.values { n.removeFromParentNode() }
@@ -253,6 +260,16 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         lock.lock()
         defer { lock.unlock() }
 
+        // Song time for this frame.
+        var songTime: Double?
+        switch mode {
+        case .playing: songTime = clock.advance(dt: dt, audioTime: audio.songTime())
+        case .countdown, .paused: songTime = frozenTime
+        case .menu, .ended: songTime = nil
+        }
+        if let ap = autoplay, let t = songTime {
+            inputs = ap.inputs(time: mode == .playing ? t : max(t, 0))
+        }
         if let s = session, s.isOneSaber, mode != .menu {
             inputs = inputs.map { $0.hand == primaryHand ? $0 : SaberInput(hand: $0.hand, direction: $0.direction, active: false) }
         }
@@ -264,7 +281,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         case .countdown, .paused:
             positionObjects(at: frozenTime)
         case .playing:
-            stepGame(dt: dt, inputs: inputs, now: now)
+            stepGame(t: songTime ?? clock.time, inputs: inputs, now: now)
         }
 
         stage.update(dt: dt)
@@ -272,9 +289,8 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         updateCamera(dt: dt)
     }
 
-    private func stepGame(dt: Double, inputs: [SaberInput], now: Double) {
+    private func stepGame(t: Double, inputs: [SaberInput], now: Double) {
         guard let session else { return }
-        let t = clock.advance(dt: dt, audioTime: audio.songTime())
         let map = session.beatmap
 
         // Lighting events.
@@ -301,7 +317,8 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
             let snap = HUDSnapshot(score: s.score, combo: s.combo, multiplier: s.multiplier, multiplierFill: s.multiplierFill,
                                    energy: s.energy, progress: session.progress(at: t), accuracy: s.accuracyPercent,
                                    rank: Rank.from(percent: s.accuracyPercent).rawValue, time: max(0, t),
-                                   duration: map.duration, warning: warning, noFail: noFail)
+                                   duration: map.duration, warning: autoplay == nil ? warning : nil, noFail: noFail,
+                                   autoplay: autoplay != nil)
             DispatchQueue.main.async { [weak self] in self?.onHUD?(snap) }
         }
     }

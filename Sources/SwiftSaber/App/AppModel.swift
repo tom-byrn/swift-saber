@@ -53,6 +53,9 @@ final class AppModel: ObservableObject {
     private var beatmaps: [String: Beatmap] = [:]
     /// Difficulty / mode of the level currently being played.
     private(set) var playing: (difficulty: Difficulty, mode: PlayMode) = (.normal, .twoSabers)
+    @Published private(set) var isDemo = false
+    /// Set by `--demo-capture <dir>`: plays the demo and saves screenshots there (used by CI).
+    var demoCaptureDirectory: URL?
 
     init() {
         settings = GameSettings.load()
@@ -99,6 +102,7 @@ final class AppModel: ObservableObject {
                 self.audio.setMusic(audioData)
                 self.loadingProgress = 1
                 withAnimation(.easeOut(duration: 0.6)) { self.screen = .menu }
+                if let dir = self.demoCaptureDirectory { self.runDemoCapture(to: dir) }
             }
         }
     }
@@ -223,10 +227,16 @@ final class AppModel: ObservableObject {
         return b
     }
 
-    func startLevel() {
+    /// Plays the selected level with the autoplay saber driver.
+    func startDemo() {
+        startLevel(demo: true)
+    }
+
+    func startLevel(demo: Bool = false) {
         updateAssignment()
+        isDemo = demo
         var mode = selectedMode
-        if availableHands.count < 2 { mode = .oneSaber }
+        if availableHands.count < 2 && !demo { mode = .oneSaber }
         let map = beatmap(selectedDifficulty, mode)
         playing = (selectedDifficulty, mode)
         let config = SessionConfig(noFail: settings.noFail, cutTolerance: settings.lenientCuts ? 75 : 60,
@@ -234,11 +244,11 @@ final class AppModel: ObservableObject {
         // In one-saber mode the saber is whichever hand has input (preferring the primary hand).
         var primary = settings.primaryHand
         if mode == .oneSaber, !availableHands.contains(primary), let h = availableHands.first { primary = h }
-        renderer.prepare(beatmap: map, config: config, primaryHand: primary)
-        hud = HUDSnapshot(duration: map.duration, noFail: settings.noFail)
+        renderer.prepare(beatmap: map, config: config, primaryHand: primary, autoplay: demo)
+        hud = HUDSnapshot(duration: map.duration, noFail: settings.noFail, autoplay: demo)
         results = nil
         resumingFromPause = false
-        runCountdown(message: settings.autoRecenter && settings.inputMode.usesAirPods ? "Aim at the centre of the screen" : "Get ready")
+        runCountdown(message: demo ? "Autoplay demo" : (settings.autoRecenter && settings.inputMode.usesAirPods ? "Aim at the centre of the screen" : "Get ready"))
     }
 
     private func runCountdown(message: String) {
@@ -260,7 +270,7 @@ final class AppModel: ObservableObject {
     }
 
     private func countdownFinished() {
-        if settings.autoRecenter && settings.inputMode.usesAirPods { hub.recenter() }
+        if settings.autoRecenter && settings.inputMode.usesAirPods && !isDemo { hub.recenter() }
         audio.play(.go, volume: 0.7)
         if resumingFromPause {
             renderer.resume()
@@ -288,7 +298,7 @@ final class AppModel: ObservableObject {
     func restartLevel() {
         countdownTimer?.invalidate()
         renderer.returnToMenu()
-        startLevel()
+        startLevel(demo: isDemo)
     }
 
     func quitToMenu() {
@@ -301,14 +311,14 @@ final class AppModel: ObservableObject {
     private func gameOver(_ r: GameResults) {
         guard screen == .playing || screen == .paused else { return }
         hideCursorIfNeeded(false)
-        isNewRecord = BestScores.submit(r, playing.difficulty, playing.mode)
+        isNewRecord = isDemo ? false : BestScores.submit(r, playing.difficulty, playing.mode)
         results = r
         renderer.returnToMenu()
         withAnimation(.easeOut(duration: 0.4)) { screen = .results }
     }
 
     private func hideCursorIfNeeded(_ hide: Bool) {
-        let shouldHide = hide && settings.inputMode != .airpods
+        let shouldHide = hide && settings.inputMode != .airpods && !isDemo
         if shouldHide && !cursorHidden {
             NSCursor.hide()
             cursorHidden = true
@@ -324,6 +334,49 @@ final class AppModel: ObservableObject {
         let work = DispatchWorkItem { [weak self] in withAnimation { self?.toast = nil } }
         toastWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2, execute: work)
+    }
+
+    // MARK: Automated capture (CI)
+
+    private func runDemoCapture(to dir: URL) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        func capture(_ name: String) {
+            if let tiff = renderer.snapshot().tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: dir.appendingPathComponent("scene-\(name).png"))
+            }
+            if let window = renderer.view.window {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                p.arguments = ["-x", "-o", "-l", "\(window.windowNumber)", dir.appendingPathComponent("window-\(name).png").path]
+                try? p.run()
+                p.waitUntilExit()
+            }
+            NSLog("SwiftSaber capture: \(name)")
+        }
+        let main = DispatchQueue.main
+        main.asyncAfter(deadline: .now() + 2) {
+            capture("1-menu")
+            self.selectedDifficulty = .expert
+            self.selectedMode = .twoSabers
+            self.screen = .levelSelect
+        }
+        main.asyncAfter(deadline: .now() + 3.5) {
+            capture("2-levelselect")
+            self.startDemo()
+        }
+        // Countdown takes ~2.3 s; then song time ≈ wall time.
+        let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
+        for (t, name) in shots {
+            main.asyncAfter(deadline: .now() + 3.5 + 2.4 + t) { capture(name) }
+        }
+        main.asyncAfter(deadline: .now() + 3.5 + 2.4 + 82) {
+            self.pauseGame()
+        }
+        main.asyncAfter(deadline: .now() + 3.5 + 2.4 + 83) {
+            capture("9-paused")
+            NSApp.terminate(nil)
+        }
     }
 
     // MARK: Keyboard & mouse

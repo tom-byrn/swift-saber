@@ -11,13 +11,24 @@ enum Launcher {
             IconRenderer.exportIconset(to: URL(fileURLWithPath: args[i + 1]))
             exit(0)
         }
+        if let i = args.firstIndex(of: "--demo-capture"), i + 1 < args.count {
+            DemoOptions.captureDirectory = URL(fileURLWithPath: args[i + 1])
+        }
         SwiftSaberApp.main()
     }
 }
 
+enum DemoOptions {
+    static var captureDirectory: URL?
+}
+
 struct SwiftSaberApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model: AppModel = {
+        let m = AppModel()
+        m.demoCaptureDirectory = DemoOptions.captureDirectory
+        return m
+    }()
 
     var body: some Scene {
         WindowGroup("Swift Saber") {

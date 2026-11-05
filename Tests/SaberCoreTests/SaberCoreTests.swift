@@ -144,17 +144,20 @@ final class LevelTests: XCTestCase {
 final class SessionTests: XCTestCase {
     /// Drives a saber in a perfect arc through every block and checks everything gets cut.
     func testAutoplayCutsEverything() {
-        let map = LevelDesigner.beatmap(difficulty: .normal, mode: .twoSabers)
+        for d in Difficulty.allCases {
+            for m in PlayMode.allCases { autoplay(LevelDesigner.beatmap(difficulty: d, mode: m)) }
+        }
+    }
+
+    func autoplay(_ map: Beatmap) {
         let session = GameSession(beatmap: map)
         let fps = 120.0
         var t = 0.0
         var cuts = 0, bad = 0, missed = 0, scored = 0
         var totalScore = 0
+        let driver = AutoplayDriver(beatmap: map)
         while t < map.duration && !session.hasFinished {
-            var inputs: [SaberInput] = []
-            for hand in Hand.allCases {
-                inputs.append(SaberInput(hand: hand, direction: autoplayDirection(map: map, hand: hand, t: t), active: true))
-            }
+            let inputs = driver.inputs(time: t)
             for e in session.update(songTime: t, sabers: inputs) {
                 switch e {
                 case .cut: cuts += 1
@@ -167,48 +170,12 @@ final class SessionTests: XCTestCase {
             t += 1 / fps
         }
         let res = session.results()
-        print("autoplay: cuts \(cuts) bad \(bad) missed \(missed) avg \(totalScore / max(scored, 1)) rank \(res.rank.rawValue) \(String(format: "%.1f%%", res.percent * 100))")
+        print("autoplay \(map.difficulty.name) \(map.mode.name): cuts \(cuts) bad \(bad) missed \(missed) avg \(totalScore / max(scored, 1)) rank \(res.rank.rawValue) \(String(format: "%.1f%%", res.percent * 100))")
         XCTAssertEqual(cuts, map.notes.count)
         XCTAssertEqual(bad, 0)
         XCTAssertEqual(missed, 0)
         XCTAssertEqual(scored, map.notes.count)
         XCTAssertGreaterThan(res.percent, 0.75)
-    }
-
-    static let swingBefore = 0.11, swingAfter = 0.08
-    static let angleBefore = radians(-100), angleAfter = radians(65)
-
-    /// Direction of a hand during the swing through `note`, at swing phase `p` (0...1).
-    func swingDirection(note: Note, hand: Hand, speed: Double, phase p: Double) -> Vec3 {
-        let pivot = Arena.pivot(for: hand)
-        let target = NoteMotion(speed: speed).position(column: note.column, row: note.row, beatTime: note.time, now: note.time)
-        var d = note.direction.vector
-        if note.direction == .any { d = (0, -1) }
-        let toTarget = (target - pivot).normalized
-        let axis = toTarget.cross(Vec3(d.x, d.y, 0)).normalized
-        let angle = Self.angleBefore + (Self.angleAfter - Self.angleBefore) * p
-        return Quat(axis: axis, angle: angle).rotate(toTarget)
-    }
-
-    /// For each hand, swing through the next block of that hand along its arrow, and glide between swings.
-    func autoplayDirection(map: Beatmap, hand: Hand, t: Double) -> Vec3 {
-        let mine = map.notes.filter { $0.hand == hand }
-        let idle = Vec3(hand == .left ? -0.3 : 0.3, -0.6, -1).normalized
-        guard let nextIndex = mine.firstIndex(where: { $0.time + Self.swingAfter > t }) else { return idle }
-        let next = mine[nextIndex]
-        let swingStart = next.time - Self.swingBefore
-        if t >= swingStart {
-            let p = (t - swingStart) / (Self.swingBefore + Self.swingAfter)
-            return swingDirection(note: next, hand: hand, speed: map.noteSpeed, phase: clamp(p, 0, 1))
-        }
-        let startDir = swingDirection(note: next, hand: hand, speed: map.noteSpeed, phase: 0)
-        guard nextIndex > 0 else { return startDir }
-        let prev = mine[nextIndex - 1]
-        let endDir = swingDirection(note: prev, hand: hand, speed: map.noteSpeed, phase: 1)
-        let returnStart = prev.time + Self.swingAfter
-        let p = clamp((t - returnStart) / max(swingStart - returnStart, 1e-3), 0, 1)
-        let s = p * p * (3 - 2 * p)
-        return endDir.slerpDirection(to: startDir, s)
     }
 
     func testWrongColorIsBadCut() {

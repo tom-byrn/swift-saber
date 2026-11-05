@@ -23,6 +23,15 @@ struct HUDView: View {
             }
             .padding(.top, 24)
 
+            if h.autoplay {
+                Text("AUTOPLAY DEMO")
+                    .font(Theme.heading(16)).tracking(3)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(Capsule().stroke(Color.white.opacity(0.35)))
+                    .padding(.top, 8)
+            }
+
             if let w = h.warning {
                 Label(w, systemImage: "exclamationmark.triangle.fill")
                     .font(Theme.body(14))
