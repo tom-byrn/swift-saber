@@ -65,7 +65,7 @@ final class StageEnvironment {
         let fm = SCNMaterial()
         fm.lightingModel = .physicallyBased
         fm.diffuse.contents = NSColor(calibratedWhite: 0.015, alpha: 1)
-        fm.roughness.contents = 0.25
+        fm.roughness.contents = 0.45
         fm.metalness.contents = 0.4
         floor.materials = [fm]
         let floorNode = SCNNode(geometry: floor)
@@ -268,11 +268,11 @@ final class StageEnvironment {
 
         backLight.type = .omni
         backLight.intensity = 0
-        backLight.attenuationStartDistance = 2
-        backLight.attenuationEndDistance = 30
+        backLight.attenuationStartDistance = 4
+        backLight.attenuationEndDistance = 40
         let bn = SCNNode()
         bn.light = backLight
-        bn.position = SCNVector3(0, 5, -9)
+        bn.position = SCNVector3(0, 10, -26)
         root.addChildNode(bn)
     }
 
@@ -367,7 +367,7 @@ final class StageEnvironment {
             if g == .back || g == .rings {
                 if g == .rings {
                     backLight.color = color
-                    backLight.intensity = CGFloat(min(maxC, 3)) * 500
+                    backLight.intensity = CGFloat(min(maxC, 3)) * 350
                 }
             }
         }

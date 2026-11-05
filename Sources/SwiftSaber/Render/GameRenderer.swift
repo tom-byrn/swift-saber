@@ -238,6 +238,12 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         session?.resetTracking()
     }
 
+    /// Results of the level in progress (used by automated captures).
+    func currentResults() -> GameResults? {
+        lock.lock(); defer { lock.unlock() }
+        return session?.results()
+    }
+
     /// Renders the 3D scene (without the SwiftUI overlay) to an image. Main thread only.
     func snapshot() -> NSImage { view.snapshot() }
 
@@ -393,7 +399,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
             case 80..<100: color = Palette.mix(Palette.white, NSColor.systemOrange, 0.5)
             default: color = Palette.mix(Palette.white, NSColor.systemRed, 0.5)
             }
-            let p = SIMD3<Float>(Float(position.x), Float(position.y) + 0.35, Float(Arena.hitPlaneZ) + 0.2)
+            let p = SIMD3<Float>(Float(position.x), Float(min(position.y, 1.3)) + 0.28, Float(Arena.hitPlaneZ) - 0.4)
             effects.addPopup("\(score.total)", at: p, color: color, scale: score.total >= 110 ? 1.15 : 1)
         case .badCut(let info, let reason):
             if let node = noteNodes.removeValue(forKey: info.noteID) {

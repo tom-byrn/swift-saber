@@ -356,25 +356,43 @@ final class AppModel: ObservableObject {
         }
         let main = DispatchQueue.main
         main.asyncAfter(deadline: .now() + 2) {
-            capture("1-menu")
+            capture("0-menu")
+            self.screen = .settings
+        }
+        main.asyncAfter(deadline: .now() + 3) {
+            capture("1-settings")
+            self.openCalibration()
+        }
+        main.asyncAfter(deadline: .now() + 4.5) {
+            capture("1b-calibration")
+            self.closeCalibration()
             self.selectedDifficulty = .expert
             self.selectedMode = .twoSabers
             self.screen = .levelSelect
         }
-        main.asyncAfter(deadline: .now() + 3.5) {
+        main.asyncAfter(deadline: .now() + 6) {
             capture("2-levelselect")
             self.startDemo()
         }
         // Countdown takes ~2.3 s; then song time ≈ wall time.
+        let start = 6 + 2.4
         let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
         for (t, name) in shots {
-            main.asyncAfter(deadline: .now() + 3.5 + 2.4 + t) { capture(name) }
+            main.asyncAfter(deadline: .now() + start + t) { capture(name) }
         }
-        main.asyncAfter(deadline: .now() + 3.5 + 2.4 + 82) {
+        main.asyncAfter(deadline: .now() + start + 82) {
             self.pauseGame()
         }
-        main.asyncAfter(deadline: .now() + 3.5 + 2.4 + 83) {
+        main.asyncAfter(deadline: .now() + start + 83) {
             capture("9-paused")
+            if let r = self.renderer.currentResults() {
+                self.results = r
+                self.renderer.returnToMenu()
+                self.screen = .results
+            }
+        }
+        main.asyncAfter(deadline: .now() + start + 85) {
+            capture("10-results")
             NSApp.terminate(nil)
         }
     }

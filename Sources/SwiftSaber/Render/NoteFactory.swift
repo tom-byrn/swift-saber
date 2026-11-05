@@ -128,22 +128,22 @@ final class NoteFactory {
 
     static func makeSparks(color: NSColor) -> SCNParticleSystem {
         let p = SCNParticleSystem()
-        p.birthRate = 2400
-        p.emissionDuration = 0.04
+        p.birthRate = 1600
+        p.emissionDuration = 0.03
         p.loops = false
-        p.particleLifeSpan = 0.35
-        p.particleLifeSpanVariation = 0.2
-        p.particleSize = 0.022
-        p.particleSizeVariation = 0.01
+        p.particleLifeSpan = 0.22
+        p.particleLifeSpanVariation = 0.1
+        p.particleSize = 0.007
+        p.particleSizeVariation = 0.003
         p.particleColor = Palette.mix(color, .white, 0.35)
         p.particleImage = Textures.softDot
         p.blendMode = .additive
         p.isLightingEnabled = false
-        p.particleVelocity = 3.2
-        p.particleVelocityVariation = 2.0
+        p.particleVelocity = 2.4
+        p.particleVelocityVariation = 1.4
         p.spreadingAngle = 180
-        p.stretchFactor = 0.035
-        p.acceleration = SCNVector3(0, -6, 0)
+        p.stretchFactor = 0.012
+        p.acceleration = SCNVector3(0, -3, 0)
         p.particleIntensity = 2
         return p
     }

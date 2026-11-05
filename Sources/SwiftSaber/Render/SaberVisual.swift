@@ -70,9 +70,9 @@ final class SaberVisual {
 
         light.type = .omni
         light.color = color
-        light.intensity = 260
-        light.attenuationStartDistance = 0.2
-        light.attenuationEndDistance = 2.2
+        light.intensity = 140
+        light.attenuationStartDistance = 0.1
+        light.attenuationEndDistance = 1.3
         let ln = SCNNode()
         ln.light = light
         ln.position = coreNode.position
@@ -97,7 +97,7 @@ final class SaberVisual {
         flashAmount *= Float(exp(-dt * 8))
         coreMaterial.emission.intensity = CGFloat(2.2 + flashAmount * 2)
         glowMaterial.emission.intensity = CGFloat(1.6 + flashAmount * 2.5)
-        light.intensity = CGFloat(260 + flashAmount * 600) * CGFloat(visibility)
+        light.intensity = CGFloat(140 + flashAmount * 300) * CGFloat(visibility)
 
         guard input.active else {
             trail.removeAll()

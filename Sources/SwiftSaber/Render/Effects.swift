@@ -33,13 +33,14 @@ final class EffectsLayer {
     // MARK: Debris
 
     func addHalves(_ a: SCNNode, _ b: SCNNode, normal: SIMD3<Float>, motion: SIMD2<Float>, forwardSpeed: Float) {
-        let push = SIMD3<Float>(motion.x, motion.y, 0) * 2.2
+        let push = SIMD3<Float>(motion.x, motion.y, 0) * 1.6
         for (node, sign) in [(a, Float(1)), (b, Float(-1))] {
             root.addChildNode(node)
-            let v = push + normal * (1.4 * sign) + SIMD3<Float>(0, 0.6, forwardSpeed * 0.35)
+            // Mostly sideways separation; only a little drift towards the camera so halves never fill the view.
+            let v = push + normal * (1.1 * sign) + SIMD3<Float>(0, 0.4, forwardSpeed * 0.1)
             let axis = simd_normalize(simd_cross(normal, SIMD3<Float>(motion.x, motion.y, 0.01)) + SIMD3<Float>(0, 0, 0.001))
             debris.append(Debris(node: node, velocity: v, spinAxis: axis, spinRate: sign * Float.random(in: 6...10, using: &rng),
-                                 age: 0, life: 0.85))
+                                 age: 0, life: 0.65))
         }
     }
 
@@ -112,8 +113,13 @@ final class EffectsLayer {
                 debris.remove(at: i)
                 continue
             }
-            debris[i].velocity += g * fdt * 0.6
+            debris[i].velocity += g * fdt * 0.8
             d.node.simdPosition += debris[i].velocity * fdt
+            if d.node.simdPosition.z > 0.3 {
+                d.node.removeFromParentNode()
+                debris.remove(at: i)
+                continue
+            }
             d.node.simdOrientation = simd_quatf(angle: d.spinRate * fdt, axis: d.spinAxis) * d.node.simdOrientation
             let p = d.age / d.life
             d.node.opacity = CGFloat(1 - p * p)
