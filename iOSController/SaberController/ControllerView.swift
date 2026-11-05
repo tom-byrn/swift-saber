@@ -91,6 +91,7 @@ struct ControllerView: View {
                 }
                 Text("Open the game on your Mac and make sure both devices are on the same Wi-Fi. Input mode must include the iPhone (Settings › Input).")
                     .font(.footnote).foregroundStyle(.white.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
             case .connecting(let name):
                 HStack(spacing: 10) {
                     ProgressView().tint(.white)
