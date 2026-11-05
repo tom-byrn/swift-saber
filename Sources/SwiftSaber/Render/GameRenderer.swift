@@ -72,6 +72,8 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     /// Called on the main thread.
     var onHUD: ((HUDSnapshot) -> Void)?
     var onGameOver: ((GameResults) -> Void)?
+    /// Called on the render thread when a saber cuts a block or hits a bomb (hand, strength 0...1).
+    var onSaberContact: ((Hand, Float) -> Void)?
 
     private let lock = NSLock()
     private var mode: Mode = .menu
@@ -389,6 +391,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         case .cut(let info):
             guard let node = noteNodes.removeValue(forKey: info.noteID) else { break }
             slice(node: node, info: info, speed: Float(session.beatmap.noteSpeed))
+            onSaberContact?(info.hand, 0.7)
             let alt = info.noteID % 2 == 0
             audio.play(alt ? .slice : .sliceAlt, pan: Float(clamp(info.position.x / 1.2, -1, 1)), volume: 0.75)
         case .scored(_, let score, _, let position):
@@ -408,6 +411,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
             let p = SIMD3<Float>(Float(info.position.x), Float(info.position.y) + 0.35, Float(Arena.hitPlaneZ) + 0.2)
             effects.addPopup(reason == .wrongDirection ? "✕" : (reason == .tooSlow ? "SLOW" : "✕"), at: p, color: Palette.mix(Palette.red, .white, 0.2), scale: 0.9)
             audio.play(.badCut, volume: 0.8)
+            onSaberContact?(info.hand, 0.4)
             shake = max(shake, 0.4)
         case .miss(let id):
             missedNotes.insert(id)
@@ -423,6 +427,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
             }
             effects.addParticles(factory.sparks(for: hand), at: position.simd)
             audio.play(.bomb, volume: 0.9)
+            onSaberContact?(hand, 1.0)
             shake = 1
         case .multiplierUp:
             break

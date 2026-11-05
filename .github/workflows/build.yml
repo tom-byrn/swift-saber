@@ -20,6 +20,11 @@ jobs:
         run: swift test
       - name: Build app bundle
         run: ./Scripts/build-app.sh
+      - name: Build iPhone controller (simulator)
+        run: |
+          xcodebuild -project iOSController/SaberController.xcodeproj -target SaberController \
+            -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build | tail -25
+          test "${PIPESTATUS[0]}" -eq 0
       - name: Zip app
         run: cd build && ditto -c -k --keepParent "Swift Saber.app" SwiftSaber.zip
       - uses: actions/upload-artifact@v4

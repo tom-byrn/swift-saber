@@ -28,24 +28,38 @@ The first launch renders the soundtrack (a few seconds) and caches it. Later lau
 
 ## Setting up your AirPods
 
-1. **Connect your AirPods** (Pro / Max / 3rd gen or newer, anything with spatial audio head tracking) to the Mac.
+1. **Connect your AirPods** (Pro / Max / 3rd gen or newer, anything with spatial audio head tracking) to the Mac. Hold **one** bud.
 2. **Turn off Automatic Ear Detection**: System Settings › *your AirPods* › Automatic Ear Detection. Otherwise the AirPods stop reporting motion as soon as they leave your ears.
-3. Launch Swift Saber, choose **Set Up AirPods**, and allow motion access when macOS asks.
-4. Hold one bud in each fist and follow the three prompts:
+3. Launch Swift Saber, choose **Set Up Sabers**, and allow motion access when macOS asks.
+4. Hold the AirPod (and the iPhone, if you're using it) in your fists and follow the three prompts:
    - point at the screen
    - point at the ceiling
    - point at the screen again
 
    Hold still at each step until the ring fills.
 
+## iPhone as the second saber (recommended)
+
+AirPods only stream motion from **one bud at a time** ([Apple, WWDC23](https://developer.apple.com/videos/play/wwdc2023/10179)), so a single pair can only drive one saber. The second saber comes from your iPhone running the companion app **Saber Controller** (`iOSController/`):
+
+1. Open `iOSController/SaberController.xcodeproj` in Xcode.
+2. Select the **SaberController** target › *Signing & Capabilities*, then pick your Team (a free Apple ID works). If Xcode says the bundle ID is taken, change it to anything unique.
+3. Plug in your iPhone (iOS 17+), choose it as the run destination, and press **Run**. On the phone, trust the developer profile under Settings › General › VPN & Device Management if asked.
+4. Put the iPhone and the Mac on the **same Wi-Fi**. Open the game; Settings › Input is **AirPod + iPhone** by default. Then open Saber Controller and allow **Local Network** access on both devices. The phone finds the Mac automatically.
+5. Run **Set Up Sabers** on the Mac with the AirPod in your main hand and the phone in the other. Both are calibrated in the same three-pose routine.
+
+The phone streams its motion at 100 Hz over UDP, using magnetometer-corrected orientation so it doesn't drift. It buzzes on every cut and harder on bombs, and its screen glows in its saber's colour. It also has big **Recenter** and **Pause** buttons.
+
 ### One saber or two?
 
-AirPods label each motion sample as coming from the left or the right bud. If both buds stream, you get **two sabers** (red = left, blue = right). Some AirPods/macOS combinations only stream from **one bud at a time**. The setup screen shows exactly what's streaming. If it's one bud, you have two options:
+| Input mode | Sabers |
+| --- | --- |
+| **AirPod + iPhone** (default) | Two: AirPod in your main hand, iPhone in the other |
+| AirPod only / iPhone only | One: plays the **One Saber** maps |
+| AirPod + Mouse | Two: the mouse or trackpad drives the second saber |
+| Mouse / Trackpad | One: for playing or testing without devices |
 
-- Play the **One Saber** maps, where a single saber cuts every block. The game switches to them automatically.
-- Switch input to **AirPod + Mouse** in Settings, so the mouse or trackpad drives the second saber.
-
-There's also a **Mouse / Trackpad** mode for playing or testing without AirPods.
+Because AirPods can hand their stream from one bud to the other, the game follows whichever calibrated bud is currently streaming.
 
 ## Controls
 

@@ -26,16 +26,15 @@ struct SettingsView: View {
                         Picker("Input", selection: binding(\.inputMode)) {
                             ForEach(InputMode.allCases) { Text($0.title).tag($0) }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
                         Text(model.settings.inputMode.detail).font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Picker("Main hand", selection: binding(\.primaryHand)) {
+                        Picker("AirPod hand", selection: binding(\.primaryHand)) {
                             Text("Left").tag(Hand.left)
                             Text("Right").tag(Hand.right)
                         }
                         .pickerStyle(.segmented)
-                        Toggle("Swap left / right AirPods", isOn: binding(\.swapAirPods))
 
                         SliderRow(title: "Saber sensitivity", value: binding(\.sensitivity), range: 0.6...2.0,
                                   format: { String(format: "%.2f×", $0) })

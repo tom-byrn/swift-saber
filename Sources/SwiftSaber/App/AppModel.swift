@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
     let audio = GameAudio()
     let renderer: GameRenderer
     let motion: HeadphoneMotionService
+    let phone: PhoneControllerServer
     lazy var calibration = CalibrationModel(hub: hub)
 
     private var monitors: [Any] = []
@@ -61,12 +62,19 @@ final class AppModel: ObservableObject {
         settings = GameSettings.load()
         renderer = GameRenderer(input: hub, audio: audio)
         motion = HeadphoneMotionService(hub: hub)
+        phone = PhoneControllerServer(hub: hub)
 
         renderer.onHUD = { [weak self] snap in
             guard let self, self.screen == .playing || self.screen == .paused else { return }
             if snap != self.hud { self.hud = snap }
         }
         renderer.onGameOver = { [weak self] r in self?.gameOver(r) }
+        // Render thread: buzz the phone when its saber hits something.
+        let hub = self.hub, phone = self.phone
+        renderer.onSaberContact = { hand, strength in
+            if case .stream(.phone)? = hub.currentAssignment()[hand] { phone.sendHaptic(strength) }
+        }
+        phone.onButton = { [weak self] b in self?.phoneButton(b) }
         audio.onConfigurationChange = { [weak self] in self?.audioConfigurationChanged() }
 
         calibration.onStepCompleted = { [weak self] in self?.audio.play(.calibrationStep, volume: 0.8) }
@@ -79,6 +87,7 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             let infos = self.hub.streamInfos()
             if infos != self.streamInfos { self.streamInfos = infos }
+            if self.settings.inputMode.usesPhone { self.sendPhoneStatus() }
         }
         loadMusic()
     }
@@ -122,6 +131,11 @@ final class AppModel: ObservableObject {
         } else {
             motion.stop()
         }
+        if settings.inputMode.usesPhone {
+            phone.start()
+        } else {
+            phone.stop()
+        }
         if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode {
             audio.setKeepAirPodsAwake(settings.keepAirPodsAwake && settings.inputMode.usesAirPods)
         }
@@ -150,31 +164,41 @@ final class AppModel: ObservableObject {
         StreamID.allCases.filter { hub.calibration(for: $0) != nil }
     }
 
+    var calibratedAirPods: [StreamID] { calibratedStreams.filter { $0.isAirPod } }
+    var phoneCalibrated: Bool { hub.calibration(for: .phone) != nil }
+
     /// Hands that currently have an input source.
     var availableHands: [Hand] {
         Array(hub.currentAssignment().keys).sorted { $0.rawValue < $1.rawValue }
     }
 
     var needsCalibration: Bool {
-        settings.inputMode.usesAirPods && calibratedStreams.isEmpty
+        (settings.inputMode.usesAirPods && calibratedAirPods.isEmpty)
+            || (settings.inputMode.usesPhone && !phoneCalibrated)
     }
 
     func updateAssignment() {
         var a: [Hand: SaberSource] = [:]
         let primary = settings.primaryHand
-        let calibrated = calibratedStreams
+        let pods = calibratedAirPods
         switch settings.inputMode {
         case .mouse:
             a[primary] = .mouse
         case .airpods:
-            if calibrated.contains(.left) && calibrated.contains(.right) {
+            if pods.contains(.left) && pods.contains(.right) && bothBudsStreaming {
+                // Only if this hardware really streams both buds at once.
                 a[.left] = .stream(settings.swapAirPods ? .right : .left)
                 a[.right] = .stream(settings.swapAirPods ? .left : .right)
-            } else if let one = calibrated.first {
-                a[primary] = .stream(one)
+            } else if !pods.isEmpty {
+                a[primary] = .anyAirPod
             }
+        case .airpodAndPhone:
+            if !pods.isEmpty { a[primary] = .anyAirPod }
+            if phoneCalibrated { a[primary.other] = .stream(.phone) }
+        case .phone:
+            if phoneCalibrated { a[primary] = .stream(.phone) }
         case .airpodAndMouse:
-            if let one = calibrated.first { a[primary] = .stream(one) }
+            if !pods.isEmpty { a[primary] = .anyAirPod }
             a[primary.other] = .mouse
         }
         hub.setAssignment(a)
@@ -185,9 +209,16 @@ final class AppModel: ObservableObject {
 
     // MARK: Calibration
 
+    /// True if left and right buds were both live at the same moment (not just one after another).
+    private var bothBudsStreaming: Bool {
+        let live = hub.liveStreams()
+        return live.contains(.left) && live.contains(.right)
+    }
+
     func openCalibration() {
-        if !settings.inputMode.usesAirPods { settings.inputMode = .airpods }
-        motion.start()
+        if !settings.inputMode.usesMotionDevices { settings.inputMode = .airpodAndPhone }
+        if settings.inputMode.usesAirPods { motion.start() }
+        if settings.inputMode.usesPhone { phone.start() }
         calibration.restart()
         calibration.activate()
         screen = .calibration
@@ -203,6 +234,28 @@ final class AppModel: ObservableObject {
         for (id, c) in results { hub.setCalibration(c, for: id) }
         updateAssignment()
         audio.play(.clear, volume: 0.7)
+    }
+
+    // MARK: iPhone controller
+
+    private func phoneButton(_ b: ControllerButton) {
+        switch b {
+        case .recenter:
+            recenter()
+        case .pause:
+            switch screen {
+            case .playing: pauseGame()
+            case .paused: resumeGame()
+            case .results: restartLevel()
+            case .menu, .levelSelect: if !needsCalibration { startLevel() }
+            default: break
+            }
+        }
+    }
+
+    private func sendPhoneStatus() {
+        let hand = hub.currentAssignment().first { $0.value == .stream(.phone) }?.key
+        phone.sendStatus(hand: hand, calibrated: phoneCalibrated)
     }
 
     func recenter() {
@@ -248,7 +301,7 @@ final class AppModel: ObservableObject {
         hud = HUDSnapshot(duration: map.duration, noFail: settings.noFail, autoplay: demo)
         results = nil
         resumingFromPause = false
-        runCountdown(message: demo ? "Autoplay demo" : (settings.autoRecenter && settings.inputMode.usesAirPods ? "Aim at the centre of the screen" : "Get ready"))
+        runCountdown(message: demo ? "Autoplay demo" : (settings.autoRecenter && settings.inputMode.usesMotionDevices ? "Aim at the centre of the screen" : "Get ready"))
     }
 
     private func runCountdown(message: String) {
@@ -270,7 +323,7 @@ final class AppModel: ObservableObject {
     }
 
     private func countdownFinished() {
-        if settings.autoRecenter && settings.inputMode.usesAirPods && !isDemo { hub.recenter() }
+        if settings.autoRecenter && settings.inputMode.usesMotionDevices && !isDemo { hub.recenter() }
         audio.play(.go, volume: 0.7)
         if resumingFromPause {
             renderer.resume()
@@ -318,7 +371,7 @@ final class AppModel: ObservableObject {
     }
 
     private func hideCursorIfNeeded(_ hide: Bool) {
-        let shouldHide = hide && settings.inputMode != .airpods && !isDemo
+        let shouldHide = hide && (settings.inputMode == .mouse || settings.inputMode == .airpodAndMouse) && !isDemo
         if shouldHide && !cursorHidden {
             NSCursor.hide()
             cursorHidden = true

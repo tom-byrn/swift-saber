@@ -9,14 +9,20 @@ enum StreamID: Int, Codable, CaseIterable, Comparable {
     case unknown = 0
     case left = 1
     case right = 2
+    /// The iPhone "Saber Controller" app.
+    case phone = 3
 
     var label: String {
         switch self {
         case .unknown: return "AirPods"
         case .left: return "Left AirPod"
         case .right: return "Right AirPod"
+        case .phone: return "iPhone"
         }
     }
+
+    var isAirPod: Bool { self != .phone }
+    static let airPods: [StreamID] = [.unknown, .left, .right]
 
     static func < (a: StreamID, b: StreamID) -> Bool { a.rawValue < b.rawValue }
 }

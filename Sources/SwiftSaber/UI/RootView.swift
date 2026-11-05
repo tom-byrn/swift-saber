@@ -96,14 +96,14 @@ struct MainMenuView: View {
                 VStack(spacing: 14) {
                     Button("Play") { model.goToLevelSelect() }
                         .buttonStyle(NeonButtonStyle(color: Theme.blue, prominent: true, width: 280))
-                    Button(model.calibratedStreams.isEmpty ? "Set Up AirPods" : "Recalibrate AirPods") { model.openCalibration() }
+                    Button(model.calibratedStreams.isEmpty ? "Set Up Sabers" : "Recalibrate Sabers") { model.openCalibration() }
                         .buttonStyle(NeonButtonStyle(color: Theme.red, width: 280))
                     Button("Settings") { model.screen = .settings }
                         .buttonStyle(NeonButtonStyle(color: .white, width: 280))
                     Button("Quit") { NSApp.terminate(nil) }
                         .buttonStyle(NeonButtonStyle(color: .gray, width: 280))
                     Divider().overlay(Theme.stroke).padding(.vertical, 6)
-                    InputStatusView(motion: model.motion)
+                    InputStatusView(motion: model.motion, phone: model.phone)
                 }
             }
             .frame(width: 360)
@@ -129,6 +129,7 @@ struct MainMenuView: View {
 struct InputStatusView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var motion: HeadphoneMotionService
+    @ObservedObject var phone: PhoneControllerServer
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -146,11 +147,11 @@ struct InputStatusView: View {
                     Label("Headphone motion isn't available on this Mac", systemImage: "exclamationmark.triangle.fill")
                         .font(Theme.body(12)).foregroundStyle(.orange)
                 default:
-                    if model.streamInfos.isEmpty {
+                    if !model.streamInfos.contains(where: { $0.id.isAirPod }) {
                         Label("Waiting for AirPods motion…", systemImage: "airpodspro")
                             .font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
                     }
-                    ForEach(model.streamInfos) { s in
+                    ForEach(model.streamInfos.filter { $0.id.isAirPod }) { s in
                         HStack(spacing: 8) {
                             Circle().fill(s.isLive ? Color.green : Color.gray).frame(width: 7, height: 7)
                                 .shadow(color: s.isLive ? .green : .clear, radius: 4)
@@ -161,6 +162,17 @@ struct InputStatusView: View {
                                 .foregroundStyle(s.isCalibrated ? Theme.blue : Color.orange)
                         }
                     }
+                }
+            }
+            if model.settings.inputMode.usesPhone {
+                HStack(spacing: 8) {
+                    let connected = phone.isConnected
+                    Circle().fill(connected ? Color.green : Color.gray).frame(width: 7, height: 7)
+                    Text(connected ? "iPhone controller" : "iPhone: open Saber Controller").font(Theme.body(12)).foregroundStyle(.white.opacity(0.85))
+                    Spacer()
+                    Text(model.phoneCalibrated ? "calibrated" : "not calibrated")
+                        .font(Theme.body(11))
+                        .foregroundStyle(model.phoneCalibrated ? Theme.blue : Color.orange)
                 }
             }
             let hands = model.availableHands

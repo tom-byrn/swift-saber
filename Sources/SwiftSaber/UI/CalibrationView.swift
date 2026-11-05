@@ -11,7 +11,7 @@ struct CalibrationView: View {
                 Button("‹ Back") { model.closeCalibration() }
                     .buttonStyle(NeonButtonStyle(color: .gray))
                 Spacer()
-                NeonText(text: "AIRPODS SETUP", color: Theme.red, font: Theme.display(44))
+                NeonText(text: "SABER SETUP", color: Theme.red, font: Theme.display(44))
                 Spacer()
                 Color.clear.frame(width: 110, height: 1)
             }
@@ -33,14 +33,10 @@ struct CalibrationView: View {
             Panel {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("BEFORE YOU START").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
-                    ChecklistRow(n: 1, title: "Connect your AirPods to this Mac",
-                                 detail: "AirPods Pro / Max / 3rd gen or later with spatial audio support.")
-                    ChecklistRow(n: 2, title: "Turn off Automatic Ear Detection",
-                                 detail: "System Settings › your AirPods › Automatic Ear Detection: Off. Otherwise motion stops when the buds leave your ears.")
-                    ChecklistRow(n: 3, title: "Take the buds out and hold one in each fist",
-                                 detail: "Grip them firmly, stems pointing in any direction — calibration works out the orientation.")
-                    ChecklistRow(n: 4, title: "Stand facing the screen",
-                                 detail: "Game audio plays through your Mac's speakers (change in Settings).")
+                    let steps = checklist
+                    ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+                        ChecklistRow(n: i + 1, title: step.0, detail: step.1)
+                    }
                     if let failure = calibration.failure {
                         Label(failure, systemImage: "exclamationmark.triangle.fill")
                             .font(Theme.body(13)).foregroundStyle(.orange)
@@ -53,7 +49,8 @@ struct CalibrationView: View {
             Panel {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("MOTION STREAMS").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
-                    MotionStatusBanner(motion: model.motion)
+                    if mode.usesAirPods { MotionStatusBanner(motion: model.motion) }
+                    if mode.usesPhone { PhoneStatusBanner(phone: model.phone) }
                     if calibration.streams.isEmpty {
                         HStack(spacing: 10) {
                             ProgressView().controlSize(.small)
@@ -62,9 +59,9 @@ struct CalibrationView: View {
                     }
                     ForEach(calibration.streams) { s in
                         HStack {
-                            Image(systemName: "airpodpro.\(s.id == .left ? "left" : "right")")
+                            Image(systemName: s.id == .phone ? "iphone" : "airpodpro.\(s.id == .left ? "left" : "right")")
                                 .font(.system(size: 22))
-                                .foregroundStyle(s.live ? (s.id == .left ? Theme.red : Theme.blue) : Color.gray)
+                                .foregroundStyle(s.live ? Color.green : Color.gray)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(s.id.label).font(Theme.body(15)).foregroundStyle(.white)
                                 Text(s.live ? "Streaming · \(Int(s.rate)) Hz" : "No data")
@@ -75,9 +72,7 @@ struct CalibrationView: View {
                         }
                     }
                     let live = calibration.streams.filter { $0.live }.count
-                    Text(live >= 2 ? "Both buds are streaming — you'll get two sabers."
-                         : live == 1 ? "One bud is streaming. AirPods often report motion from one bud at a time; you'll play with one saber (or add the mouse as a second saber in Settings)."
-                         : "Move the AirPods around a little to wake them up.")
+                    Text(streamHint(live: live))
                         .font(Theme.body(13))
                         .foregroundStyle(.white.opacity(0.65))
                         .fixedSize(horizontal: false, vertical: true)
@@ -94,6 +89,51 @@ struct CalibrationView: View {
                 }
             }
             .frame(width: 400)
+        }
+    }
+
+    private var mode: InputMode { model.settings.inputMode }
+
+    private var checklist: [(String, String)] {
+        let pod = model.settings.primaryHand.name.lowercased()
+        let other = model.settings.primaryHand.other.name.lowercased()
+        var steps: [(String, String)] = []
+        if mode.usesAirPods {
+            steps.append(("Connect your AirPods to this Mac",
+                          "AirPods Pro / Max / 3rd gen or later with spatial audio support."))
+            steps.append(("Turn off Automatic Ear Detection",
+                          "System Settings › your AirPods › Automatic Ear Detection: Off. Otherwise motion stops when the buds leave your ears."))
+        }
+        if mode.usesPhone {
+            steps.append(("Open Saber Controller on your iPhone",
+                          "Same Wi-Fi network as this Mac. It finds the game automatically — allow Local Network access when asked."))
+        }
+        switch mode {
+        case .airpodAndPhone:
+            steps.append(("AirPod in your \(pod) fist, iPhone in your \(other)",
+                          "Hold one bud only (AirPods stream from one bud at a time). Grip the phone like a hilt; any orientation works."))
+        case .phone:
+            steps.append(("Hold the iPhone in your \(pod) fist", "Grip it like a sword hilt — any orientation works."))
+        default:
+            steps.append(("Hold one AirPod in your \(pod) fist", "Grip it firmly, stem pointing any direction — calibration works out the orientation."))
+        }
+        steps.append(("Stand facing the screen", "Game audio plays through your Mac's speakers (change in Settings)."))
+        return steps
+    }
+
+    private func streamHint(live: Int) -> String {
+        let hasPhone = calibration.streams.contains { $0.id == .phone && $0.live }
+        let hasPod = calibration.streams.contains { $0.id.isAirPod && $0.live }
+        switch mode {
+        case .airpodAndPhone:
+            if hasPhone && hasPod { return "AirPod and iPhone are both streaming — you'll get two sabers." }
+            if hasPhone { return "iPhone connected. Waiting for AirPods motion — move the bud around to wake it." }
+            if hasPod { return "AirPod streaming. Waiting for the iPhone — open Saber Controller on the same Wi-Fi." }
+            return "Waiting for your AirPod and iPhone…"
+        case .phone:
+            return hasPhone ? "iPhone connected." : "Open Saber Controller on your iPhone (same Wi-Fi network)."
+        default:
+            return live > 0 ? "AirPod streaming — you're ready to calibrate." : "Move the AirPod around a little to wake it up."
         }
     }
 
@@ -189,6 +229,22 @@ struct MotionStatusBanner: View {
         case .connected:
             Label("AirPods connected", systemImage: "airpodspro").font(Theme.body(13)).foregroundStyle(.green)
         case .waitingForAirPods:
+            EmptyView()
+        }
+    }
+}
+
+struct PhoneStatusBanner: View {
+    @ObservedObject var phone: PhoneControllerServer
+    var body: some View {
+        switch phone.status {
+        case .connected(let name):
+            Label("\(name) connected", systemImage: "iphone.radiowaves.left.and.right").font(Theme.body(13)).foregroundStyle(.green)
+        case .waiting:
+            Label("Looking for Saber Controller on your iPhone…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
+        case .failed(let msg):
+            Label("Network error: \(msg)", systemImage: "exclamationmark.triangle.fill").font(Theme.body(13)).foregroundStyle(.orange)
+        case .off:
             EmptyView()
         }
     }

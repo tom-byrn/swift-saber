@@ -249,3 +249,42 @@ final class MusicTests: XCTestCase {
         try data.write(to: URL(fileURLWithPath: path))
     }
 }
+
+final class ControllerProtocolTests: XCTestCase {
+    func testRoundTrip() {
+        let msgs: [ControllerMessage] = [
+            .motion(sequence: 123_456, attitude: Quat(x: 0.1, y: -0.2, z: 0.3, w: 0.927), gravity: Vec3(0, -1, 0.02)),
+            .hello(name: "Tom’s iPhone"),
+            .button(.recenter),
+            .button(.pause),
+            .status(hand: 1, calibrated: true, macName: "MacBook Pro"),
+            .status(hand: -1, calibrated: false, macName: ""),
+            .haptic(intensity: 0.75),
+        ]
+        for m in msgs {
+            let decoded = ControllerMessage.decode(m.encoded())
+            switch (m, decoded) {
+            case let (.motion(s1, q1, g1), .motion(s2, q2, g2)?):
+                XCTAssertEqual(s1, s2)
+                XCTAssertEqual(q1.x, q2.x, accuracy: 1e-6); XCTAssertEqual(q1.w, q2.w, accuracy: 1e-6)
+                XCTAssertEqual(g1.y, g2.y, accuracy: 1e-6)
+            default:
+                XCTAssertEqual(decoded, m)
+            }
+        }
+    }
+
+    func testRejectsGarbage() {
+        XCTAssertNil(ControllerMessage.decode(Data()))
+        XCTAssertNil(ControllerMessage.decode(Data([0x53, 0x53, 9, 1])))
+        XCTAssertNil(ControllerMessage.decode(Data([0x53, 0x53, 1, 1, 0, 0])))
+        var bad = ControllerMessage.hello(name: "x").encoded()
+        bad[0] = 0
+        XCTAssertNil(ControllerMessage.decode(bad))
+    }
+
+    func testMotionPacketIsSmall() {
+        let d = ControllerMessage.motion(sequence: 1, attitude: .identity, gravity: Vec3(0, 0, -1)).encoded()
+        XCTAssertEqual(d.count, 4 + 4 + 28)
+    }
+}
