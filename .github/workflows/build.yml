@@ -31,16 +31,40 @@ jobs:
         with:
           name: SwiftSaber-app
           path: build/SwiftSaber.zip
-      - name: Smoke test (autoplay demo + screenshots)
+      - name: Smoke test (autoplay demo + screenshots, iPhone controller in simulator)
         continue-on-error: true
         run: |
           mkdir -p captures
+          # Boot an iPhone simulator running Saber Controller; it shares the Mac's network,
+          # so it should discover the game over Bonjour and connect.
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)
+          echo "Simulator: $UDID"
+          if [ -n "$UDID" ]; then
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b || true
+            xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
+            xcrun simctl launch "$UDID" app.swiftsaber.controller || true
+          fi
           "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
           PID=$!
-          for i in $(seq 1 150); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+          for i in $(seq 1 150); do
+            kill -0 $PID 2>/dev/null || break
+            if [ -n "$UDID" ] && { [ $i -eq 12 ] || [ $i -eq 50 ]; }; then
+              xcrun simctl io "$UDID" screenshot "captures/phone-live-$i.png" || true
+            fi
+            sleep 1
+          done
           if kill -0 $PID 2>/dev/null; then echo "app still running, killing"; kill $PID; fi
           wait $PID; echo "exit code: $?"
           tail -40 captures/app.log
+          if [ -n "$UDID" ]; then
+            for hand in right left; do
+              xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
+              xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-$hand || true
+              sleep 4
+              xcrun simctl io "$UDID" screenshot "captures/phone-preview-$hand.png" || true
+            done
+          fi
           ls -la captures
       - uses: actions/upload-artifact@v4
         if: always()

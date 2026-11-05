@@ -47,7 +47,22 @@ final class ControllerModel: ObservableObject {
     private let heavy = UIImpactFeedbackGenerator(style: .heavy)
     private let rigid = UIImpactFeedbackGenerator(style: .rigid)
 
+    /// `--preview-left` / `--preview-right`: show the connected, calibrated screen without a Mac
+    /// (used to take screenshots in the simulator, which has no motion sensors).
+    static var previewHand: Int8? {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--preview-left") { return 0 }
+        if args.contains("--preview-right") { return 1 }
+        return nil
+    }
+
     func start() {
+        if let h = Self.previewHand {
+            hand = h
+            calibrated = true
+            link = .connected("Tom's MacBook Pro")
+            return
+        }
         UIApplication.shared.isIdleTimerDisabled = true
         heavy.prepare()
         rigid.prepare()
