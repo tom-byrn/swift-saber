@@ -1,0 +1,284 @@
+import XCTest
+@testable import SaberCore
+
+final class MathTests: XCTestCase {
+    func testQuaternionRotation() {
+        let q = Quat(axis: .unitX, angle: .pi / 2)
+        let v = q.rotate(Vec3(0, 0, -1))
+        XCTAssertEqual(v.x, 0, accuracy: 1e-9)
+        XCTAssertEqual(v.y, 1, accuracy: 1e-9)
+        XCTAssertEqual(v.z, 0, accuracy: 1e-9)
+    }
+
+    func testFromTo() {
+        let a = Vec3(0, 0, -1), b = Vec3(1, 1, 0).normalized
+        let q = Quat(from: a, to: b)
+        let r = q.rotate(a)
+        XCTAssertEqual((r - b).length, 0, accuracy: 1e-9)
+    }
+
+    func testArrowRotation() {
+        // Rotating a downward arrow by the arrow rotation must give the cut direction.
+        for d in CutDirection.allCases where d != .any {
+            let a = d.arrowRotation
+            let x = sin(a), y = -cos(a)
+            XCTAssertEqual(x, d.vector.x, accuracy: 1e-6, "\(d)")
+            XCTAssertEqual(y, d.vector.y, accuracy: 1e-6, "\(d)")
+        }
+    }
+}
+
+final class CalibrationTests: XCTestCase {
+    /// Simulates a sensor held in an arbitrary grip in a z-up world.
+    func simulate(deviceToWorld: Bool, grip: Quat, heading: Double) -> (center: [MotionSample], up: [MotionSample], attitude: (Vec3) -> Quat) {
+        // Player basis inside the sensor's world frame: heading rotates around world z.
+        let headingQ = Quat(axis: .unitZ, angle: heading)
+        let fwdWorld = headingQ.rotate(Vec3(0, 1, 0))
+        let rightWorld = headingQ.rotate(Vec3(1, 0, 0))
+        let upWorld = Vec3(0, 0, 1)
+        // Device-to-world rotation for a hand pointing in player direction `p`.
+        func w(for p: Vec3) -> Quat {
+            let pw = (rightWorld * p.x + upWorld * p.y + (-fwdWorld) * p.z).normalized
+            // Grip maps device frame to "hand frame" whose -z points along the hand; then align the hand.
+            let align = Quat(from: Vec3(0, 0, -1), to: pw)
+            // For pointing straight up the shortest-arc is fine; keep consistent roll by composing.
+            return align * grip
+        }
+        func attitude(_ p: Vec3) -> Quat {
+            let W = w(for: p)
+            return deviceToWorld ? W : W.conjugate
+        }
+        func gravity(_ p: Vec3) -> Vec3 {
+            let W = w(for: p)
+            return W.conjugate.rotate(Vec3(0, 0, -1))
+        }
+        let center = (0..<10).map { MotionSample(time: Double($0) * 0.04, attitude: attitude(Vec3(0, 0, -1)), gravity: gravity(Vec3(0, 0, -1))) }
+        let upDir = Vec3(0, 0.999, -0.04).normalized
+        let up = (0..<10).map { MotionSample(time: 2 + Double($0) * 0.04, attitude: attitude(upDir), gravity: gravity(upDir)) }
+        return (center, up, attitude)
+    }
+
+    func check(deviceToWorld: Bool) {
+        let grip = Quat(axis: Vec3(0.3, -0.7, 0.4), angle: 1.1)
+        let sim = simulate(deviceToWorld: deviceToWorld, grip: grip, heading: 0.8)
+        guard case .success(let cal) = SaberCalibration.solve(center: sim.center, up: sim.up) else {
+            return XCTFail("calibration failed")
+        }
+        XCTAssertEqual(cal.deviceToWorld, deviceToWorld)
+        // Pointing right should read as +x, pointing down as -y.
+        let targets = [Vec3(1, 0, -1).normalized, Vec3(0, -1, -1).normalized, Vec3(-0.5, 0.3, -1).normalized, Vec3(0, 0, -1)]
+        for t in targets {
+            let d = cal.direction(for: sim.attitude(t))
+            XCTAssertLessThan(d.angle(to: t), radians(4), "target \(t) got \(d)")
+        }
+    }
+
+    func testCalibrationDeviceToWorld() { check(deviceToWorld: true) }
+    func testCalibrationWorldToDevice() { check(deviceToWorld: false) }
+
+    func testCalibrationProcess() {
+        let grip = Quat(axis: Vec3(1, 2, 3), angle: 0.7)
+        let sim = simulate(deviceToWorld: true, grip: grip, heading: -0.3)
+        let p = CalibrationProcess()
+        var t = 0.0
+        func feed(_ s: MotionSample, seconds: Double) {
+            let end = t + seconds
+            while t < end {
+                p.add(MotionSample(time: t, attitude: s.attitude, gravity: s.gravity))
+                t += 0.04
+            }
+        }
+        feed(sim.center[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .pointUp)
+        feed(sim.up[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .confirmCenter)
+        feed(sim.center[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .done)
+        XCTAssertNotNil(p.result)
+    }
+}
+
+final class LevelTests: XCTestCase {
+    func testAllDifficultiesGenerate() {
+        for mode in PlayMode.allCases {
+            for d in Difficulty.allCases {
+                let map = LevelDesigner.beatmap(difficulty: d, mode: mode)
+                XCTAssertGreaterThan(map.notes.count, 40, "\(d) \(mode)")
+                // Notes sorted by time
+                XCTAssertEqual(map.notes.map { $0.time }, map.notes.map { $0.time }.sorted())
+                // Valid grid
+                for n in map.notes {
+                    XCTAssert((0...3).contains(n.column))
+                    XCTAssert((0...2).contains(n.row))
+                }
+                // No two blocks in the same cell at the same time.
+                var seen = Set<String>()
+                for n in map.notes {
+                    let key = "\(n.beat)-\(n.column)-\(n.row)"
+                    XCTAssertFalse(seen.contains(key), "overlap \(key) in \(d)")
+                    seen.insert(key)
+                }
+                print("\(map.difficulty.name) \(mode.name): \(map.notes.count) notes, \(map.bombs.count) bombs, \(String(format: "%.2f", map.notesPerSecond)) nps")
+            }
+        }
+    }
+
+    func testParity() {
+        // Within a short gap, the same hand never asks for two downward cuts in a row.
+        let map = LevelDesigner.beatmap(difficulty: .expert, mode: .twoSabers)
+        let spb = 60.0 / map.bpm
+        for hand in Hand.allCases {
+            let ns = map.notes.filter { $0.hand == hand }
+            for (a, b) in zip(ns, ns.dropFirst()) where (b.time - a.time) / spb < 2.0 {
+                if a.direction.isDownward && b.direction != .any {
+                    XCTAssertFalse(b.direction.isDownward, "double down at beat \(b.beat)")
+                }
+                if a.direction.isUpward && b.direction != .any {
+                    XCTAssertFalse(b.direction.isUpward, "double up at beat \(b.beat)")
+                }
+            }
+        }
+    }
+}
+
+final class SessionTests: XCTestCase {
+    /// Drives a saber in a perfect arc through every block and checks everything gets cut.
+    func testAutoplayCutsEverything() {
+        let map = LevelDesigner.beatmap(difficulty: .normal, mode: .twoSabers)
+        let session = GameSession(beatmap: map)
+        let fps = 120.0
+        var t = 0.0
+        var cuts = 0, bad = 0, missed = 0, scored = 0
+        var totalScore = 0
+        while t < map.duration && !session.hasFinished {
+            var inputs: [SaberInput] = []
+            for hand in Hand.allCases {
+                inputs.append(SaberInput(hand: hand, direction: autoplayDirection(map: map, hand: hand, t: t), active: true))
+            }
+            for e in session.update(songTime: t, sabers: inputs) {
+                switch e {
+                case .cut: cuts += 1
+                case .badCut(let info, let r): bad += 1; let n = map.notes[info.noteID]; print("bad \(r) note beat \(n.beat) hand \(n.hand) col \(n.column) row \(n.row) dir \(n.direction) by \(info.hand); same-beat:", map.notes.filter { abs($0.beat - n.beat) < 1.01 }.map { "\($0.beat) \($0.hand) c\($0.column)r\($0.row) \($0.direction)" })
+                case .miss: missed += 1
+                case .scored(_, let s, _, _): scored += 1; totalScore += s.total
+                default: break
+                }
+            }
+            t += 1 / fps
+        }
+        let res = session.results()
+        print("autoplay: cuts \(cuts) bad \(bad) missed \(missed) avg \(totalScore / max(scored, 1)) rank \(res.rank.rawValue) \(String(format: "%.1f%%", res.percent * 100))")
+        XCTAssertEqual(cuts, map.notes.count)
+        XCTAssertEqual(bad, 0)
+        XCTAssertEqual(missed, 0)
+        XCTAssertEqual(scored, map.notes.count)
+        XCTAssertGreaterThan(res.percent, 0.75)
+    }
+
+    static let swingBefore = 0.11, swingAfter = 0.08
+    static let angleBefore = radians(-100), angleAfter = radians(65)
+
+    /// Direction of a hand during the swing through `note`, at swing phase `p` (0...1).
+    func swingDirection(note: Note, hand: Hand, speed: Double, phase p: Double) -> Vec3 {
+        let pivot = Arena.pivot(for: hand)
+        let target = NoteMotion(speed: speed).position(column: note.column, row: note.row, beatTime: note.time, now: note.time)
+        var d = note.direction.vector
+        if note.direction == .any { d = (0, -1) }
+        let toTarget = (target - pivot).normalized
+        let axis = toTarget.cross(Vec3(d.x, d.y, 0)).normalized
+        let angle = Self.angleBefore + (Self.angleAfter - Self.angleBefore) * p
+        return Quat(axis: axis, angle: angle).rotate(toTarget)
+    }
+
+    /// For each hand, swing through the next block of that hand along its arrow, and glide between swings.
+    func autoplayDirection(map: Beatmap, hand: Hand, t: Double) -> Vec3 {
+        let mine = map.notes.filter { $0.hand == hand }
+        let idle = Vec3(hand == .left ? -0.3 : 0.3, -0.6, -1).normalized
+        guard let nextIndex = mine.firstIndex(where: { $0.time + Self.swingAfter > t }) else { return idle }
+        let next = mine[nextIndex]
+        let swingStart = next.time - Self.swingBefore
+        if t >= swingStart {
+            let p = (t - swingStart) / (Self.swingBefore + Self.swingAfter)
+            return swingDirection(note: next, hand: hand, speed: map.noteSpeed, phase: clamp(p, 0, 1))
+        }
+        let startDir = swingDirection(note: next, hand: hand, speed: map.noteSpeed, phase: 0)
+        guard nextIndex > 0 else { return startDir }
+        let prev = mine[nextIndex - 1]
+        let endDir = swingDirection(note: prev, hand: hand, speed: map.noteSpeed, phase: 1)
+        let returnStart = prev.time + Self.swingAfter
+        let p = clamp((t - returnStart) / max(swingStart - returnStart, 1e-3), 0, 1)
+        let s = p * p * (3 - 2 * p)
+        return endDir.slerpDirection(to: startDir, s)
+    }
+
+    func testWrongColorIsBadCut() {
+        let note = Note(id: 0, beat: 4, time: 2, column: 1, row: 1, hand: .left, direction: .down)
+        let map = Beatmap(songTitle: "t", difficulty: .easy, mode: .twoSabers, bpm: 120, noteSpeed: 10,
+                          duration: 10, notes: [note], bombs: [], lights: [])
+        let session = GameSession(beatmap: map)
+        let pivot = Arena.pivot(for: .right)
+        let target = NoteMotion(speed: 10).position(column: 1, row: 1, beatTime: 2, now: 2)
+        var gotBad = false
+        var t = 1.8
+        while t < 2.3 {
+            let p = clamp((t - 1.95) / 0.1, 0, 1)
+            let point = Vec3(target.x, target.y + 1 - 2 * p, target.z)
+            for e in session.update(songTime: t, sabers: [SaberInput(hand: .right, direction: (point - pivot).normalized, active: true)]) {
+                if case .badCut(_, let r) = e { XCTAssertEqual(r, .wrongColor); gotBad = true }
+            }
+            t += 1 / 120
+        }
+        XCTAssertTrue(gotBad)
+    }
+}
+
+final class AudioTests: XCTestCase {
+    func testSoundEffectsRender() {
+        for e in SoundEffect.allCases {
+            let a = SoundEffectSynth.render(e)
+            XCTAssertGreaterThan(a.frameCount, 100)
+            XCTAssertFalse(a.left.contains { !$0.isFinite })
+            XCTAssertLessThan(a.peak, 1.5)
+        }
+    }
+}
+
+final class MusicTests: XCTestCase {
+    func testMusicRenders() throws {
+        let start = Date()
+        let audio = MusicSynth().render()
+        let elapsed = Date().timeIntervalSince(start)
+        print(String(format: "music: %.1fs of audio rendered in %.2fs, peak %.3f", audio.duration, elapsed, audio.peak))
+        XCTAssertGreaterThan(audio.duration, 140)
+        XCTAssertFalse(audio.left.contains { !$0.isFinite })
+        XCTAssertLessThanOrEqual(audio.peak, 1.0)
+        // Per-section loudness (RMS) to sanity-check the arrangement.
+        let song = SongDefinition.prismRun
+        for s in song.sections {
+            let a = Int(song.time(ofBeat: Double(s.startBar * 4)) * audio.sampleRate)
+            let b = min(audio.frameCount, Int(song.time(ofBeat: Double(s.endBar * 4)) * audio.sampleRate))
+            var sum: Double = 0
+            for i in stride(from: a, to: b, by: 4) { sum += Double(audio.left[i] * audio.left[i]) }
+            let rms = (sum / Double((b - a) / 4)).squareRoot()
+            print("  \(s.kind.rawValue) bars \(s.startBar)-\(s.endBar): rms \(String(format: "%.3f", rms))")
+        }
+        if let path = ProcessInfo.processInfo.environment["SABER_WAV"] {
+            try writeWAV(audio, to: path)
+        }
+    }
+
+    func writeWAV(_ a: StereoAudio, to path: String) throws {
+        var data = Data()
+        func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
+        func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
+        let n = a.frameCount
+        data.append(contentsOf: Array("RIFF".utf8)); u32(UInt32(36 + n * 4))
+        data.append(contentsOf: Array("WAVEfmt ".utf8)); u32(16); u16(1); u16(2); u32(44100); u32(44100 * 4); u16(4); u16(16)
+        data.append(contentsOf: Array("data".utf8)); u32(UInt32(n * 4))
+        for i in 0..<n {
+            u16(UInt16(bitPattern: Int16(max(-1, min(1, a.left[i])) * 32767)))
+            u16(UInt16(bitPattern: Int16(max(-1, min(1, a.right[i])) * 32767)))
+        }
+        try data.write(to: URL(fileURLWithPath: path))
+    }
+}
