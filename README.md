@@ -1,8 +1,8 @@
 # Swift Saber
 
-A neon rhythm-slicing game for macOS where your **AirPods are the sabers**. Take the buds out, hold one in each fist, face the screen, and cut blocks to the beat.
+A neon rhythm-slicing game for macOS where your **AirPods and iPhone are the sabers**. Hold an AirPod in one fist and your iPhone (running the Saber Controller app) in the other, face the screen, and cut blocks to the beat.
 
-- **AirPods motion control.** Uses `CMHeadphoneMotionManager`. Each sample is tagged with the bud that sent it, so each bud drives its own saber.
+- **AirPod + iPhone motion control.** One saber from an AirPod (`CMHeadphoneMotionManager`), the other from your iPhone over Wi-Fi. AirPods stream from one bud at a time, so a single pair can't drive two sabers.
 - **Calibration that works with any grip.** You point at the screen, then at the ceiling. The app works out how each bud sits in your hand and which way is up.
 - **An original track, "Prism Run".** A 128 BPM, 2½-minute electronic track synthesized entirely in code: no samples, no licensed audio.
 - **Four hand-designed difficulties** (Easy to Expert), plus One Saber maps. Blocks follow swing flow (forehand/backhand alternation), with bombs and a full light show synced to the music.
