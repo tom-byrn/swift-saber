@@ -1,0 +1,73 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app || true
+          swift --version
+      - name: Test core
+        run: swift test
+      - name: Build app bundle
+        run: ./Scripts/build-app.sh
+      - name: Build iPhone controller (simulator)
+        run: |
+          xcodebuild -project iOSController/SaberController.xcodeproj -target SaberController \
+            -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build | tail -25
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Zip app
+        run: cd build && ditto -c -k --keepParent "Swift Saber.app" SwiftSaber.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SwiftSaber-app
+          path: build/SwiftSaber.zip
+      - name: Smoke test (autoplay demo + screenshots, iPhone controller in simulator)
+        continue-on-error: true
+        run: |
+          mkdir -p captures
+          # Boot an iPhone simulator running Saber Controller; it shares the Mac's network,
+          # so it should discover the game over Bonjour and connect.
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)
+          echo "Simulator: $UDID"
+          if [ -n "$UDID" ]; then
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b || true
+            xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
+            xcrun simctl launch "$UDID" app.swiftsaber.controller || true
+          fi
+          "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 150); do
+            kill -0 $PID 2>/dev/null || break
+            if [ -n "$UDID" ] && { [ $i -eq 12 ] || [ $i -eq 50 ]; }; then
+              xcrun simctl io "$UDID" screenshot "captures/phone-live-$i.png" || true
+            fi
+            sleep 1
+          done
+          if kill -0 $PID 2>/dev/null; then echo "app still running, killing"; kill $PID; fi
+          wait $PID; echo "exit code: $?"
+          tail -40 captures/app.log
+          if [ -n "$UDID" ]; then
+            for hand in right left; do
+              xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
+              xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-$hand || true
+              sleep 4
+              xcrun simctl io "$UDID" screenshot "captures/phone-preview-$hand.png" || true
+            done
+          fi
+          ls -la captures
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SwiftSaber-captures
+          path: captures/
