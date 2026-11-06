@@ -195,6 +195,10 @@ final class ControllerModel: ObservableObject {
             link = .searching
             hand = -1
             if let first = macs.first(where: { $0.id == preferredMac }) ?? macs.first { connect(to: first) }
+        } else if connection == nil, let first = macs.first(where: { $0.id == preferredMac }) ?? macs.first {
+            // The last connection failed while the Mac is still advertised; Bonjour won't
+            // report a change, so retry here instead of searching forever.
+            connect(to: first)
         }
         // Periodic hello so the Mac shows our name even if the first one was lost.
         if case .connected = link { send(.hello(name: UIDevice.current.name)) }

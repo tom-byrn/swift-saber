@@ -112,12 +112,14 @@ final class PhoneControllerServer: ObservableObject {
     /// Runs on the network queue.
     private func handle(_ m: ControllerMessage) {
         let now = CACurrentMediaTime()
-        let wasIdle = now - lastPacket > 2
+        var wasIdle = now - lastPacket > 2
         lastPacket = now
         switch m {
         case let .motion(_, attitude, gravity):
             hub.ingest(stream: .phone, sample: MotionSample(time: now, attitude: attitude, gravity: gravity))
         case let .hello(name):
+            // Motion usually arrives before the first hello, so refresh the shown name.
+            if name != phoneName { wasIdle = true }
             phoneName = name
         case let .button(b):
             DispatchQueue.main.async { self.onButton?(b) }
