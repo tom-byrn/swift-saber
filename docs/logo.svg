@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="title">
+  <title id="title">Swift Saber</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#170520"/>
+      <stop offset="1" stop-color="#030514"/>
+    </linearGradient>
+    <linearGradient id="block" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f5fe0"/>
+      <stop offset="1" stop-color="#0b2f8c"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="clip"><rect x="40" y="40" width="432" height="432" rx="96"/></clipPath>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="40" y="40" width="432" height="432" rx="96" fill="url(#tile)"/>
+
+  <g clip-path="url(#clip)">
+    <!-- Receding prism rings (octagons) -->
+    <g fill="none" stroke-width="3">
+      <polygon points="256,186 305.5,206.5 326,256 305.5,305.5 256,326 206.5,305.5 186,256 206.5,206.5" stroke="#3380ff" stroke-opacity="0.35"/>
+      <polygon points="256,142 336.6,175.4 370,256 336.6,336.6 256,370 175.4,336.6 142,256 175.4,175.4" stroke="#ff334d" stroke-opacity="0.28"/>
+      <polygon points="256,98 367.7,144.3 414,256 367.7,367.7 256,414 144.3,367.7 98,256 144.3,144.3" stroke="#3380ff" stroke-opacity="0.24"/>
+      <polygon points="256,54 398.8,113.2 458,256 398.8,398.8 256,458 113.2,398.8 54,256 113.2,113.2" stroke="#ff334d" stroke-opacity="0.18"/>
+    </g>
+
+    <!-- Block with cut arrow -->
+    <g transform="rotate(-10 256 196)" filter="url(#soft)">
+      <rect x="202" y="142" width="108" height="108" rx="17" fill="url(#block)" stroke="#5aa0ff" stroke-width="3"/>
+      <polygon points="222,180 290,180 256,216" fill="#ffffff"/>
+    </g>
+
+    <!-- Crossed blades: red (left hand) and blue (right hand) -->
+    <g stroke-linecap="round" filter="url(#glow)">
+      <line x1="110" y1="446" x2="420" y2="136" stroke="#ff2640" stroke-width="20"/>
+      <line x1="402" y1="446" x2="92" y2="136" stroke="#2e8cff" stroke-width="20"/>
+    </g>
+    <g stroke-linecap="round" stroke="#ffffff">
+      <line x1="110" y1="446" x2="420" y2="136" stroke-width="7"/>
+      <line x1="402" y1="446" x2="92" y2="136" stroke-width="7"/>
+    </g>
+    <!-- Hilts -->
+    <g stroke-linecap="round" stroke="#b9bfca" stroke-width="16">
+      <line x1="88" y1="468" x2="114" y2="442"/>
+      <line x1="424" y1="468" x2="398" y2="442"/>
+    </g>
+  </g>
+
+  <!-- Rim -->
+  <rect x="40" y="40" width="432" height="432" rx="96" fill="none" stroke="#ffffff" stroke-opacity="0.14" stroke-width="3"/>
+</svg>
