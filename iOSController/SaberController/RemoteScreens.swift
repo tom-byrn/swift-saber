@@ -305,7 +305,7 @@ struct LevelSelectScreen: View {
                                     model.send(.selectDifficulty(i))
                                 } label: {
                                     Text(name)
-                                        .font(Theme.heading(20))
+                                        .font(Theme.heading(20)).tracking(1).textCase(.uppercase)
                                         .frame(maxWidth: .infinity).frame(height: 48)
                                         .foregroundStyle(.white)
                                         .background(RoundedRectangle(cornerRadius: 12).fill(difficultyColor(i).opacity(selected ? 0.5 : 0.08)))
@@ -373,7 +373,7 @@ struct LevelSelectScreen: View {
             model.send(.selectMode(mode))
         } label: {
             Text(title)
-                .font(Theme.heading(19))
+                .font(Theme.heading(19)).tracking(1).textCase(.uppercase)
                 .frame(maxWidth: .infinity).frame(height: 46)
                 .foregroundStyle(.white)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Neon.red.opacity(selected ? 0.45 : 0.06)))
