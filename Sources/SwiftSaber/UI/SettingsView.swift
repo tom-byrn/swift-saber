@@ -40,6 +40,7 @@ struct SettingsView: View {
                                   format: { String(format: "%.2f×", $0) })
                         SliderRow(title: "AirPods motion delay", value: binding(\.airPodLatencyMs), range: 0...150,
                                   format: { "\(Int($0)) ms" })
+                        Toggle("Smooth AirPod motion", isOn: binding(\.smoothAirPodMotion))
                         Toggle("Lenient cut angles", isOn: binding(\.lenientCuts))
                         Toggle("Auto-recenter when a song starts", isOn: binding(\.autoRecenter))
                         Toggle("Keep AirPods awake (silent stream)", isOn: binding(\.keepAirPodsAwake))

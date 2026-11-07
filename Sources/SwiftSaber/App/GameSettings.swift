@@ -53,6 +53,8 @@ struct GameSettings: Codable, Equatable {
     var audioOffsetMs: Double = 0
     /// How late AirPods motion arrives, in milliseconds.
     var airPodLatencyMs: Double = 45
+    /// Smooth AirPods motion using the sensor's own timestamps and gyroscope.
+    var smoothAirPodMotion = true
     var noFail = false
     var lenientCuts = true
     var autoRecenter = true
@@ -72,6 +74,34 @@ struct GameSettings: Codable, Equatable {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)
         }
+    }
+}
+
+extension GameSettings {
+    /// Tolerates missing keys, so adding a setting doesn't reset everyone's saved settings.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? c.decodeIfPresent(T.self, forKey: key)) ?? fallback
+        }
+        self.init()
+        let d = self
+        inputMode = value(.inputMode, d.inputMode)
+        primaryHand = value(.primaryHand, d.primaryHand)
+        swapAirPods = value(.swapAirPods, d.swapAirPods)
+        sensitivity = value(.sensitivity, d.sensitivity)
+        audioOutput = value(.audioOutput, d.audioOutput)
+        musicVolume = value(.musicVolume, d.musicVolume)
+        sfxVolume = value(.sfxVolume, d.sfxVolume)
+        audioOffsetMs = value(.audioOffsetMs, d.audioOffsetMs)
+        airPodLatencyMs = value(.airPodLatencyMs, d.airPodLatencyMs)
+        smoothAirPodMotion = value(.smoothAirPodMotion, d.smoothAirPodMotion)
+        noFail = value(.noFail, d.noFail)
+        lenientCuts = value(.lenientCuts, d.lenientCuts)
+        autoRecenter = value(.autoRecenter, d.autoRecenter)
+        keepAirPodsAwake = value(.keepAirPodsAwake, d.keepAirPodsAwake)
+        bloom = value(.bloom, d.bloom)
+        cameraShake = value(.cameraShake, d.cameraShake)
     }
 }
 

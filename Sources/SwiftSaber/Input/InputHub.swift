@@ -26,6 +26,7 @@ struct StreamInfo: Identifiable, Equatable {
 final class InputHub {
     private struct Stream {
         var filter = SaberPoseFilter()
+        var processor = SensorMotionProcessor()
         var calibration: SaberCalibration?
         var lastRaw: MotionSample?
         var arrivals: [Double] = []
@@ -42,19 +43,30 @@ final class InputHub {
     private var assignment: [Hand: SaberSource] = [:]
     private var sensitivity: Double = 1
     private var airPodLatency: Double = 0.04
+    /// Use the AirPods' own timestamps and gyroscope to smooth their motion.
+    private var smoothAirPods = true
     /// The phone streams over Wi-Fi at ~100 Hz, so it arrives sooner than AirPods motion.
     private let phoneLatency: Double = 0.025
     private var rawObserver: ((StreamID, MotionSample) -> Void)?
 
     /// A stream counts as live if it delivered a sample within this window.
     static let liveWindow: Double = 0.6
+    private static let defaultPrediction = SaberPoseFilter().maxPrediction
+    /// Look-ahead for smoothed AirPods: samples are ~40 ms apart plus delivery jitter.
+    private static let smoothPrediction = 0.05
+    private static let smoothPredictionTail = 0.03
 
     // MARK: Configuration
 
-    func configure(sensitivity: Double, airPodLatency: Double) {
+    func configure(sensitivity: Double, airPodLatency: Double, smoothAirPods: Bool) {
         lock.lock(); defer { lock.unlock() }
         self.sensitivity = sensitivity
         self.airPodLatency = airPodLatency
+        if smoothAirPods != self.smoothAirPods {
+            self.smoothAirPods = smoothAirPods
+            // Sample times switch clocks, so start the filters afresh.
+            for k in streams.keys { streams[k]!.filter.reset() }
+        }
     }
 
     func setAssignment(_ a: [Hand: SaberSource]) {
@@ -110,9 +122,24 @@ final class InputHub {
         s.lastRaw = sample
         s.arrivals.append(sample.time)
         if s.arrivals.count > 40 { s.arrivals.removeFirst(s.arrivals.count - 40) }
-        if let c = s.calibration {
-            let dir = applySensitivity(c.direction(for: sample.attitude), gain: sensitivity)
-            s.filter.add(time: sample.time, direction: dir)
+        // Always run the processor so its clock offset and gyro convention are ready when needed.
+        let gain = sensitivity
+        let calibration = s.calibration
+        let processed = s.processor.process(sample) { q in
+            guard let c = calibration else { return q.rotate(Vec3.forward) }
+            return applySensitivity(c.direction(for: q), gain: gain)
+        }
+        if let c = calibration {
+            let dir = applySensitivity(c.direction(for: sample.attitude), gain: gain)
+            if smoothAirPods && id.isAirPod {
+                s.filter.maxPrediction = Self.smoothPrediction
+                s.filter.predictionTail = Self.smoothPredictionTail
+                s.filter.add(time: processed.time, direction: dir, angularVelocity: processed.angularVelocity)
+            } else {
+                s.filter.maxPrediction = Self.defaultPrediction
+                s.filter.predictionTail = 0
+                s.filter.add(time: sample.time, direction: dir)
+            }
         }
         streams[id] = s
         observer = rawObserver

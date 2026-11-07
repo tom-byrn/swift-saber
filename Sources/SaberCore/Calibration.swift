@@ -2,14 +2,20 @@ import Foundation
 
 /// One raw orientation sample from a motion sensor (e.g. an AirPod).
 public struct MotionSample: Sendable {
+    /// Local time the sample arrived (`CACurrentMediaTime`).
     public var time: Double
     /// Attitude quaternion exactly as reported by the sensor.
     public var attitude: Quat
     /// Gravity in the device frame (unit g). May be zero if the sensor does not report it.
     public var gravity: Vec3
+    /// The sensor's own timestamp for this sample (any clock, seconds), if it reports one.
+    public var sensorTime: Double?
+    /// Gyroscope rotation rate in the device frame (rad/s), if the sensor reports it.
+    public var rotationRate: Vec3?
 
-    public init(time: Double, attitude: Quat, gravity: Vec3) {
+    public init(time: Double, attitude: Quat, gravity: Vec3, sensorTime: Double? = nil, rotationRate: Vec3? = nil) {
         self.time = time; self.attitude = attitude; self.gravity = gravity
+        self.sensorTime = sensorTime; self.rotationRate = rotationRate
     }
 }
 

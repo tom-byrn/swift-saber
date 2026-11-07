@@ -90,10 +90,13 @@ final class HeadphoneMotionService: NSObject, ObservableObject, CMHeadphoneMotio
             }
             let q = motion.attitude.quaternion
             let g = motion.gravity
+            let r = motion.rotationRate
             let sample = MotionSample(
                 time: CACurrentMediaTime(),
                 attitude: Quat(x: q.x, y: q.y, z: q.z, w: q.w),
-                gravity: Vec3(g.x, g.y, g.z)
+                gravity: Vec3(g.x, g.y, g.z),
+                sensorTime: motion.timestamp,
+                rotationRate: Vec3(r.x, r.y, r.z)
             )
             self.hub.ingest(stream: stream, sample: sample)
         }

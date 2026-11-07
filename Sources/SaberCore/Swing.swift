@@ -3,7 +3,7 @@ import Foundation
 /// Smooths and predicts a saber direction from irregular, low-rate sensor samples
 /// (AirPods report motion at roughly 25 Hz) so the blade renders and collides smoothly at 60-120 fps.
 public final class SaberPoseFilter {
-    private var last: (t: Double, dir: Vec3)?
+    private var last: (t: Double, dir: Vec3, velocity: Vec3?)?
     private var previous: (t: Double, dir: Vec3)?
     private var output: Vec3?
     private var outputTime: Double = 0
@@ -12,10 +12,14 @@ public final class SaberPoseFilter {
     public var maxPrediction: Double
     /// Exponential smoothing time constant.
     public var smoothing: Double
+    /// When > 0, prediction eases out over this time constant once it passes `maxPrediction`
+    /// instead of stopping dead (a hard stop makes the blade stall, then jump, on late samples).
+    public var predictionTail: Double
 
-    public init(maxPrediction: Double = 0.045, smoothing: Double = 0.022) {
+    public init(maxPrediction: Double = 0.045, smoothing: Double = 0.022, predictionTail: Double = 0) {
         self.maxPrediction = maxPrediction
         self.smoothing = smoothing
+        self.predictionTail = predictionTail
     }
 
     public var lastSampleTime: Double? { last?.t }
@@ -24,27 +28,48 @@ public final class SaberPoseFilter {
         last = nil; previous = nil; output = nil
     }
 
-    public func add(time: Double, direction: Vec3) {
-        if let l = last, time - l.t < 1e-4 {
-            last = (time, direction.normalized)
-            return
+    /// - Parameter angularVelocity: the direction's angular velocity (axis × rad/s), e.g. from a
+    ///   gyroscope. When nil, speed is estimated from the last two samples.
+    public func add(time: Double, direction: Vec3, angularVelocity: Vec3? = nil) {
+        if let l = last {
+            // Late, out-of-order sample: newer data is already in.
+            if time < l.t - 1e-4 { return }
+            if time - l.t < 1e-4 {
+                last = (time, direction.normalized, angularVelocity)
+                return
+            }
+            previous = (l.t, l.dir)
         }
-        previous = last
-        last = (time, direction.normalized)
+        last = (time, direction.normalized, angularVelocity)
+    }
+
+    /// How far ahead (seconds) to extrapolate a sample that is `age` seconds old.
+    func lookAhead(_ age: Double) -> Double {
+        let a = max(0, age)
+        guard predictionTail > 0 else { return min(a, maxPrediction) }
+        guard a > maxPrediction else { return a }
+        return maxPrediction + predictionTail * (1 - exp(-(a - maxPrediction) / predictionTail))
     }
 
     public func direction(at now: Double) -> Vec3? {
         guard let l = last else { return nil }
         var target = l.dir
-        if let p = previous, maxPrediction > 0 {
-            let dt = l.t - p.t
-            if dt > 1e-3 && dt < 0.2 {
-                let angle = p.dir.angle(to: l.dir)
-                if angle > 1e-4 {
-                    let axis = p.dir.cross(l.dir).normalized
-                    let rate = angle / dt
-                    let ahead = clamp(now - l.t, 0, maxPrediction)
-                    target = Quat(axis: axis, angle: min(rate * ahead, 0.6)).rotate(l.dir).normalized
+        if maxPrediction > 0 {
+            let ahead = lookAhead(now - l.t)
+            if let w = l.velocity {
+                let speed = w.length
+                if speed > 1e-6 {
+                    target = Quat(axis: w / speed, angle: min(speed * ahead, 0.6)).rotate(l.dir).normalized
+                }
+            } else if let p = previous {
+                let dt = l.t - p.t
+                if dt > 1e-3 && dt < 0.2 {
+                    let angle = p.dir.angle(to: l.dir)
+                    if angle > 1e-4 {
+                        let axis = p.dir.cross(l.dir).normalized
+                        let rate = angle / dt
+                        target = Quat(axis: axis, angle: min(rate * ahead, 0.6)).rotate(l.dir).normalized
+                    }
                 }
             }
         }

@@ -119,7 +119,8 @@ final class AppModel: ObservableObject {
     // MARK: Settings
 
     private func applySettings(previous: GameSettings?) {
-        hub.configure(sensitivity: settings.sensitivity, airPodLatency: settings.airPodLatencyMs / 1000)
+        hub.configure(sensitivity: settings.sensitivity, airPodLatency: settings.airPodLatencyMs / 1000,
+                      smoothAirPods: settings.smoothAirPodMotion)
         audio.userOffset = settings.audioOffsetMs / 1000
         audio.setVolumes(music: settings.musicVolume, sfx: settings.sfxVolume)
         renderer.setVisualOptions(bloom: settings.bloom, cameraShake: settings.cameraShake)
