@@ -53,13 +53,26 @@ final class PhoneControllerServer: ObservableObject {
 
     static var macName: String { Host.current().localizedName ?? "Mac" }
 
+    /// Bonjour instance names are limited to 63 bytes of UTF-8; a longer name (e.g. an
+    /// auto-generated host name) makes registration fail silently while the listener still
+    /// reports ready, so the phone never finds the game.
+    static var serviceName: String {
+        var name = macName
+        while name.utf8.count > 63 { name.removeLast() }
+        return name.isEmpty ? "Swift Saber" : name
+    }
+
     func start() {
         guard listener == nil else { return }
         do {
             let params = NWParameters.udp
             params.allowLocalEndpointReuse = true
             let l = try NWListener(using: params)
-            l.service = NWListener.Service(name: Self.macName, type: ControllerProtocol.bonjourType)
+            l.service = NWListener.Service(name: Self.serviceName, type: ControllerProtocol.bonjourType)
+            l.serviceRegistrationUpdateHandler = { change in
+                NSLog("PhoneController Bonjour: \(String(describing: change))")
+            }
+            NSLog("PhoneController advertising \"\(Self.serviceName)\" (\(Self.macName.utf8.count) bytes)")
             l.stateUpdateHandler = { [weak self] state in
                 NSLog("PhoneController listener: \(String(describing: state)) port \(String(describing: l.port))")
                 DispatchQueue.main.async {
