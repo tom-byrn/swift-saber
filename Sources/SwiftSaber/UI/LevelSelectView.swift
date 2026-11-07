@@ -62,6 +62,19 @@ struct LevelSelectView: View {
                                 .foregroundStyle(Color.orange.opacity(0.9))
                         }
 
+                        HStack(spacing: 12) {
+                            Text("ARENA").font(Theme.mono(11)).foregroundStyle(.white.opacity(0.5))
+                            Picker("Arena", selection: Binding(get: { model.settings.stage }, set: { model.settings.stage = $0 })) {
+                                ForEach(StageKind.allCases) { Text($0.title).tag($0) }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 170)
+                            Button("Colors…") { model.screen = .customize }
+                                .buttonStyle(.link)
+                                .font(Theme.body(13))
+                        }
+
                         Toggle(isOn: Binding(get: { model.settings.noFail }, set: { model.settings.noFail = $0 })) {
                             Text("No Fail").font(Theme.body(14)).foregroundStyle(.white.opacity(0.85))
                         }

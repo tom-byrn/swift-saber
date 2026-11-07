@@ -14,17 +14,20 @@ final class SaberVisual {
     private var trail: [(t: Double, base: SIMD3<Float>, tip: SIMD3<Float>)] = []
     private var visibility: Float = 0
     private var flashAmount: Float = 0
-    private let color: NSColor
+    private var color: NSColor
     private let coreMaterial: SCNMaterial
     private let glowMaterial: SCNMaterial
+    private let ringMaterial: SCNMaterial
 
     static let trailDuration = 0.11
 
-    init(hand: Hand, root: SCNNode) {
+    init(hand: Hand, color rgb: NeonColor, root: SCNNode) {
         self.hand = hand
-        color = Palette.saber(hand)
-        coreMaterial = Materials.neon(Palette.mix(Palette.saber(hand), .white, 0.7), intensity: 2.2)
-        glowMaterial = Materials.glow(Palette.saber(hand), intensity: 1.6, opacity: 0.55)
+        let c = rgb.ns
+        color = c
+        coreMaterial = Materials.neon(Palette.mix(c, .white, 0.7), intensity: 2.2)
+        glowMaterial = Materials.glow(c, intensity: 1.6, opacity: 0.55)
+        ringMaterial = Materials.neon(c, intensity: 2)
         let tm = SCNMaterial()
         tm.lightingModel = .constant
         tm.diffuse.contents = NSColor.white
@@ -45,7 +48,7 @@ final class SaberVisual {
         bladeRoot.addChildNode(hiltNode)
 
         let ringGeo = SCNTorus(ringRadius: 0.031, pipeRadius: 0.006)
-        ringGeo.materials = [Materials.neon(color, intensity: 2)]
+        ringGeo.materials = [ringMaterial]
         for z in [hilt - 0.24, hilt - 0.04] {
             let r = SCNNode(geometry: ringGeo)
             r.eulerAngles.x = .pi / 2
@@ -85,6 +88,16 @@ final class SaberVisual {
 
         trailNode.renderingOrder = 20
         root.addChildNode(trailNode)
+    }
+
+    /// Recolours the blade, glow, hilt rings, light and trail.
+    func setColor(_ rgb: NeonColor) {
+        let c = rgb.ns
+        color = c
+        coreMaterial.emission.contents = Palette.mix(c, .white, 0.7)
+        glowMaterial.emission.contents = c
+        ringMaterial.emission.contents = c
+        light.color = c
     }
 
     /// Brief brightness kick when the saber cuts something.

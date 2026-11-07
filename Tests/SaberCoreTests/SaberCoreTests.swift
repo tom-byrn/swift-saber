@@ -288,3 +288,54 @@ final class ControllerProtocolTests: XCTestCase {
         XCTAssertEqual(d.count, 4 + 4 + 28)
     }
 }
+
+final class ColorSchemeTests: XCTestCase {
+    func testHexRoundTrip() {
+        let c = NeonColor(hex: "#1A7FFF")
+        XCTAssertEqual(c?.r255, 0x1A)
+        XCTAssertEqual(c?.g255, 0x7F)
+        XCTAssertEqual(c?.b255, 0xFF)
+        XCTAssertEqual(c?.hex, "#1A7FFF")
+        XCTAssertEqual(NeonColor(hex: "f0a")?.hex, "#FF00AA")
+        XCTAssertEqual(NeonColor(hex: " 00ff00 ")?.hex, "#00FF00")
+        XCTAssertNil(NeonColor(hex: "#12345"))
+        XCTAssertNil(NeonColor(hex: "zzzzzz"))
+    }
+
+    func testComponentsAreClamped() {
+        let c = NeonColor(1.5, -0.2, 0.5)
+        XCTAssertEqual(c.r, 1)
+        XCTAssertEqual(c.g, 0)
+        XCTAssertEqual(c.b, 0.5)
+    }
+
+    func testSlotsAndSwap() {
+        var s = SaberColorScheme.classic
+        s[.rightLights] = .white
+        XCTAssertEqual(s.rightLights, .white)
+        let w = s.swapped
+        XCTAssertEqual(w.leftSaber, s.rightSaber)
+        XCTAssertEqual(w.leftLights, .white)
+        XCTAssertEqual(w.swapped, s)
+    }
+
+    func testSchemeCodableRoundTrip() throws {
+        let s = ColorPreset.all[3].scheme
+        let data = try JSONEncoder().encode(s)
+        XCTAssertEqual(try JSONDecoder().decode(SaberColorScheme.self, from: data), s)
+    }
+
+    func testPresetsAreUniqueAndReadable() {
+        XCTAssertEqual(Set(ColorPreset.all.map(\.id)).count, ColorPreset.all.count)
+        XCTAssertEqual(ColorPreset.preset(id: "classic")?.scheme, .classic)
+        for p in ColorPreset.all {
+            XCTAssertEqual(ColorPreset.matching(p.scheme)?.id, p.id)
+            // The two sabers must be easy to tell apart.
+            let a = p.scheme.leftSaber, b = p.scheme.rightSaber
+            let distance = abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b)
+            XCTAssertGreaterThan(distance, 0.5, p.name)
+            // Blocks are dark versions of the saber colours.
+            XCTAssertLessThan(a.deepened.luminance, a.luminance + 1e-9, p.name)
+        }
+    }
+}

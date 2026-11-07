@@ -9,24 +9,6 @@ enum Palette {
     static let white = NSColor(calibratedRed: 0.92, green: 0.96, blue: 1.0, alpha: 1)
     static let fog = NSColor(calibratedRed: 0.01, green: 0.012, blue: 0.03, alpha: 1)
 
-    static func saber(_ hand: Hand) -> NSColor { hand == .left ? red : blue }
-
-    static func light(_ c: LightColor) -> NSColor {
-        switch c {
-        case .off: return .black
-        case .red: return red
-        case .blue: return blue
-        case .white: return white
-        }
-    }
-
-    /// Dark, saturated block body colors.
-    static func blockBody(_ hand: Hand) -> NSColor {
-        hand == .left
-            ? NSColor(calibratedRed: 0.62, green: 0.05, blue: 0.09, alpha: 1)
-            : NSColor(calibratedRed: 0.05, green: 0.22, blue: 0.68, alpha: 1)
-    }
-
     static func mix(_ a: NSColor, _ b: NSColor, _ t: CGFloat) -> NSColor {
         let a = a.usingColorSpace(.deviceRGB) ?? a
         let b = b.usingColorSpace(.deviceRGB) ?? b

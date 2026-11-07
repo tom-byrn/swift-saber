@@ -47,7 +47,7 @@ jobs:
           fi
           "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
           PID=$!
-          for i in $(seq 1 150); do
+          for i in $(seq 1 210); do
             kill -0 $PID 2>/dev/null || break
             if [ -n "$UDID" ] && { [ $i -eq 12 ] || [ $i -eq 50 ]; }; then
               xcrun simctl io "$UDID" screenshot "captures/phone-live-$i.png" || true
