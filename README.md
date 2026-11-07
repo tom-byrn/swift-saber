@@ -103,7 +103,18 @@ Choose **Set Up Sabers**, then point at the screen, at the ceiling, and at the s
 | `F` | Toggle full screen |
 | `⌘K` | Set up sabers |
 
-The iPhone also has big **Recenter** and **Pause** buttons. AirPods have no compass, so their aim can slowly drift. With **Auto-recenter** on (the default), the sabers re-centre at every song start, so aim at the screen during the countdown.
+### Playing from your iPhone
+
+You never need to walk back to the Mac. Once Saber Controller connects, the phone mirrors whatever the game is showing and gives you buttons for all of it:
+
+- **Main menu:** Play, Set Up Sabers, Settings, Recenter, Quit
+- **Level select:** difficulty, one/two sabers, No Fail, Start, Watch Demo
+- **Saber setup:** start, restart and finish calibration
+- **Settings:** every option from the Mac's settings screen
+- **In a song:** a big **hold-to-pause** button. Press and hold it for about a second to pause, so a swing or a brushed thumb never pauses by accident.
+- **Paused / results:** Resume, Recenter, Restart, Play Again, Change Level, Menu
+
+The phone works as a remote in every input mode, even when it isn't one of the sabers. AirPods have no compass, so their aim can slowly drift. With **Auto-recenter** on (the default), the sabers re-centre at every song start, so aim at the screen during the countdown.
 
 ### Tuning (Settings)
 

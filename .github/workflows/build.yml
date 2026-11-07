@@ -47,12 +47,20 @@ jobs:
           fi
           "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
           PID=$!
-          for i in $(seq 1 150); do
+          # The game logs "phone-shot: <screen>" once each screen has been mirrored to the
+          # phone (it navigates with the same remote commands the phone sends).
+          SHOT=0
+          for i in $(seq 1 400); do
             kill -0 $PID 2>/dev/null || break
-            if [ -n "$UDID" ] && { [ $i -eq 12 ] || [ $i -eq 50 ]; }; then
-              xcrun simctl io "$UDID" screenshot "captures/phone-live-$i.png" || true
+            if [ -n "$UDID" ]; then
+              NAMES=$(grep -o 'phone-shot: [a-z]*' captures/app.log 2>/dev/null | sed 's/phone-shot: //' || true)
+              COUNT=$(printf '%s\n' "$NAMES" | grep -c . || true)
+              for name in $(printf '%s\n' "$NAMES" | tail -n +$((SHOT + 1))); do
+                xcrun simctl io "$UDID" screenshot "captures/phone-live-$name.png" || true
+              done
+              SHOT=${COUNT:-0}
             fi
-            sleep 1
+            sleep 0.5
           done
           if kill -0 $PID 2>/dev/null; then echo "app still running, killing"; kill $PID; fi
           wait $PID; echo "exit code: $?"
@@ -64,6 +72,17 @@ jobs:
               sleep 4
               xcrun simctl io "$UDID" screenshot "captures/phone-preview-$hand.png" || true
             done
+            # Every remote screen with sample data, plus the hold-to-pause ring mid-hold.
+            for screen in menu levelSelect settings calibration countdown playing paused results; do
+              xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
+              xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-left --preview $screen || true
+              sleep 3
+              xcrun simctl io "$UDID" screenshot "captures/phone-remote-$screen.png" || true
+            done
+            xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
+            xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-left --preview playing --preview-hold || true
+            sleep 3
+            xcrun simctl io "$UDID" screenshot "captures/phone-remote-holding.png" || true
           fi
           ls -la captures
       - uses: actions/upload-artifact@v4

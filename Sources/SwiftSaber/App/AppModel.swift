@@ -75,6 +75,7 @@ final class AppModel: ObservableObject {
             if case .stream(.phone)? = hub.currentAssignment()[hand] { phone.sendHaptic(strength) }
         }
         phone.onButton = { [weak self] b in self?.phoneButton(b) }
+        phone.onCommand = { [weak self] c in self?.handleRemote(c) }
         audio.onConfigurationChange = { [weak self] in self?.audioConfigurationChanged() }
 
         calibration.onStepCompleted = { [weak self] in self?.audio.play(.calibrationStep, volume: 0.8) }
@@ -87,7 +88,9 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             let infos = self.hub.streamInfos()
             if infos != self.streamInfos { self.streamInfos = infos }
-            if self.settings.inputMode.usesPhone { self.sendPhoneStatus() }
+            // The phone is always a remote, even when it isn't one of the sabers.
+            self.sendPhoneStatus()
+            self.sendPhoneState()
         }
         loadMusic()
     }
@@ -131,11 +134,10 @@ final class AppModel: ObservableObject {
         } else {
             motion.stop()
         }
-        if settings.inputMode.usesPhone {
-            phone.start()
-        } else {
-            phone.stop()
-        }
+        // Always listen for the phone so it can drive the menus in every input mode;
+        // its motion only reaches the sabers when the input mode uses it.
+        phone.forwardsMotion = settings.inputMode.usesPhone
+        phone.start()
         if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode {
             audio.setKeepAirPodsAwake(settings.keepAirPodsAwake && settings.inputMode.usesAirPods)
         }
@@ -408,44 +410,63 @@ final class AppModel: ObservableObject {
             NSLog("SwiftSaber capture: \(name)")
         }
         let main = DispatchQueue.main
-        main.asyncAfter(deadline: .now() + 2) {
+        // Navigation goes through the same remote commands the iPhone sends, so a phone
+        // simulator connected during the run shows each screen mirrored. CI watches the log
+        // for "phone-shot" lines and screenshots the simulator at each one.
+        func phoneShot(_ name: String, at t: Double) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) { NSLog("SwiftSaber phone-shot: \(name)") }
+        }
+        phoneShot("menu", at: 2.5)
+        phoneShot("settings", at: 6.5)
+        phoneShot("calibration", at: 10.5)
+        phoneShot("levelselect", at: 14.5)
+        main.asyncAfter(deadline: .now() + 4) {
             capture("0-menu")
-            self.screen = .settings
+            self.handleRemote(.openSettings)
         }
-        main.asyncAfter(deadline: .now() + 3) {
+        main.asyncAfter(deadline: .now() + 8) {
             capture("1-settings")
-            self.openCalibration()
+            self.handleRemote(.back)
+            self.handleRemote(.openCalibration)
         }
-        main.asyncAfter(deadline: .now() + 4.5) {
+        main.asyncAfter(deadline: .now() + 12) {
             capture("1b-calibration")
-            self.closeCalibration()
-            self.selectedDifficulty = .expert
+            self.handleRemote(.back)
+            self.handleRemote(.openLevelSelect)
             self.selectedMode = .twoSabers
-            self.screen = .levelSelect
+            self.handleRemote(.selectDifficulty(Difficulty.expert.rawValue))
         }
-        main.asyncAfter(deadline: .now() + 6) {
+        main.asyncAfter(deadline: .now() + 16) {
             capture("2-levelselect")
-            self.startDemo()
+            self.handleRemote(.watchDemo)
         }
         // Countdown takes ~2.3 s; then song time ≈ wall time.
-        let start = 6 + 2.4
+        let start = 16 + 2.4
         let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
         for (t, name) in shots {
             main.asyncAfter(deadline: .now() + start + t) { capture(name) }
         }
+        phoneShot("countdown", at: 16 + 1)
+        phoneShot("playing", at: start + 30)
+        phoneShot("paused", at: start + 85)
+        phoneShot("results", at: start + 91)
         main.asyncAfter(deadline: .now() + start + 82) {
-            self.pauseGame()
+            self.handleRemote(.pause)
         }
         main.asyncAfter(deadline: .now() + start + 83) {
             capture("9-paused")
+        }
+        main.asyncAfter(deadline: .now() + start + 87) {
             if let r = self.renderer.currentResults() {
                 self.results = r
                 self.renderer.returnToMenu()
                 self.screen = .results
             }
         }
-        main.asyncAfter(deadline: .now() + start + 85) {
+        main.asyncAfter(deadline: .now() + start + 89) {
             capture("10-results")
+        }
+        main.asyncAfter(deadline: .now() + start + 93) {
             NSApp.terminate(nil)
         }
     }

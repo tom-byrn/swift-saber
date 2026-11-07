@@ -283,6 +283,38 @@ final class ControllerProtocolTests: XCTestCase {
         XCTAssertNil(ControllerMessage.decode(bad))
     }
 
+    func testRemoteMessagesRoundTrip() {
+        var state = RemoteState()
+        state.screen = .levelSelect
+        state.songTitle = "Prism Run"
+        state.difficulties = ["Easy", "Normal", "Hard", "Expert"]
+        state.difficulty = 3
+        state.calibration.streams = [.init(id: "phone", name: "iPhone", live: true, progress: 0.4, done: false)]
+        state.settings.inputModes = [.init(id: "airpodAndPhone", title: "AirPod + iPhone")]
+        state.settings.sensitivity = 1.25
+        var results = RemoteState.Results()
+        results.rank = "SS"; results.score = 123_456
+        state.results = results
+        let msgs: [ControllerMessage] = [
+            .remoteState(state),
+            .command(id: 7, .start),
+            .command(id: 0xDEAD_BEEF, .selectDifficulty(2)),
+            .command(id: 1, .setFlag(.noFail, true)),
+            .command(id: 2, .setValue(.musicVolume, 0.5)),
+            .command(id: 3, .setInputMode("mouse")),
+        ]
+        for m in msgs {
+            XCTAssertEqual(ControllerMessage.decode(m.encoded()), m)
+        }
+        // A full state must fit comfortably in one datagram.
+        XCTAssertLessThan(ControllerMessage.remoteState(state).encoded().count, 8_000)
+    }
+
+    func testRejectsTruncatedRemoteMessage() {
+        let d = ControllerMessage.command(id: 9, .pause).encoded()
+        XCTAssertNil(ControllerMessage.decode(d.prefix(d.count - 1)))
+    }
+
     func testMotionPacketIsSmall() {
         let d = ControllerMessage.motion(sequence: 1, attitude: .identity, gravity: Vec3(0, 0, -1)).encoded()
         XCTAssertEqual(d.count, 4 + 4 + 28)

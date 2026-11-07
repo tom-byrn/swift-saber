@@ -120,6 +120,9 @@ struct MainMenuView: View {
                 KeyHint(key: "R", label: "Recenter")
                 KeyHint(key: "F", label: "Full screen")
                 KeyHint(key: "esc", label: "Pause / Back")
+                Label("Every menu also works from Saber Controller on your iPhone", systemImage: "iphone")
+                    .font(Theme.body(12))
+                    .foregroundStyle(.white.opacity(0.5))
             }
             .padding(.bottom, 22)
         }
