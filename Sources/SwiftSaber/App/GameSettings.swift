@@ -21,11 +21,11 @@ enum InputMode: String, Codable, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .airpodAndPhone:
-            return "Two sabers: an AirPod in your main hand, your iPhone (running Saber Controller) in the other. The phone buzzes on every cut."
+            return "Two sabers: an AirPod in your main hand, your iPhone (running Swift Saber) in the other. The phone buzzes on every cut."
         case .airpods:
             return "One saber. AirPods stream motion from one bud at a time, so hold a single bud."
         case .phone:
-            return "One saber driven by your iPhone running the Saber Controller app."
+            return "One saber driven by your iPhone running the Swift Saber app."
         case .airpodAndMouse:
             return "An AirPod drives your main hand, the mouse or trackpad drives the other saber."
         case .mouse:

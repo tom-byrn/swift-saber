@@ -338,7 +338,7 @@ final class ControllerModel: ObservableObject {
         g.inputModes = [.init(id: "airpodAndPhone", title: "AirPod + iPhone"), .init(id: "airpods", title: "AirPod only"),
                         .init(id: "phone", title: "iPhone only"), .init(id: "airpodAndMouse", title: "AirPod + Mouse"),
                         .init(id: "mouse", title: "Mouse / Trackpad")]
-        g.inputDetail = "Two sabers: an AirPod in your main hand, your iPhone (running Saber Controller) in the other. The phone buzzes on every cut."
+        g.inputDetail = "Two sabers: an AirPod in your main hand, your iPhone (running Swift Saber) in the other. The phone buzzes on every cut."
         g.primaryHand = 0
         g.sensitivity = 1.15
         g.airPodLatencyMs = 45

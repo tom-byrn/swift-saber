@@ -13,6 +13,7 @@
 		5A1E7C2D9B3F4A6E8D0C1B2A /* RemoteScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D4C3B2A1E0F9A8B7C6D5E4F /* RemoteScreens.swift */; };
 		8252C4A6BC369427FD28709D /* ControllerProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76A34BC594DA9CCD378B8BD4 /* ControllerProtocol.swift */; };
 		8FF8D8F30D16B920DE15A85F /* Math.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A347BFCCAE0838F75DF6A3 /* Math.swift */; };
+		3E9A1C7B5D2F4E6A8C0B1D3F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6B2D4F8A0C1E3A5B7D9F1E2C /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +24,7 @@
 		7D4C3B2A1E0F9A8B7C6D5E4F /* RemoteScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreens.swift; sourceTree = "<group>"; };
 		76A34BC594DA9CCD378B8BD4 /* ControllerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ControllerProtocol.swift; path = ../Sources/SaberCore/ControllerProtocol.swift; sourceTree = SOURCE_ROOT; };
 		63A347BFCCAE0838F75DF6A3 /* Math.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Math.swift; path = ../Sources/SaberCore/Math.swift; sourceTree = SOURCE_ROOT; };
+		6B2D4F8A0C1E3A5B7D9F1E2C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB5944C6515D6D2B678426AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -53,6 +55,7 @@
 				9E3E37F4134EF77575F17D3F /* ControllerModel.swift */,
 				266E766121563744E40D2A86 /* ControllerView.swift */,
 				7D4C3B2A1E0F9A8B7C6D5E4F /* RemoteScreens.swift */,
+				6B2D4F8A0C1E3A5B7D9F1E2C /* Assets.xcassets */,
 				BB5944C6515D6D2B678426AB /* Info.plist */,
 			);
 			path = SaberController;
@@ -133,6 +136,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3E9A1C7B5D2F4E6A8C0B1D3F /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,9 +205,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SaberController/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Saber Controller";
+				INFOPLIST_KEY_CFBundleDisplayName = "Swift Saber";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -224,9 +229,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SaberController/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Saber Controller";
+				INFOPLIST_KEY_CFBundleDisplayName = "Swift Saber";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;

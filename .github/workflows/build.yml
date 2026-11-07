@@ -20,6 +20,14 @@ jobs:
         run: swift test
       - name: Build app bundle
         run: ./Scripts/build-app.sh
+      - name: Render iPhone app icon
+        run: |
+          # The iPhone icon is the Mac icon's artwork, full bleed. Export it for reference and
+          # fill it in if the committed copy is missing.
+          mkdir -p captures
+          "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --export-ios-icon "$PWD/captures/ios-app-icon.png"
+          ICON=iOSController/SaberController/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+          [ -f "$ICON" ] || cp captures/ios-app-icon.png "$ICON"
       - name: Build iPhone controller (simulator)
         run: |
           xcodebuild -project iOSController/SaberController.xcodeproj -target SaberController \
@@ -83,6 +91,9 @@ jobs:
             xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-left --preview playing --preview-hold || true
             sleep 3
             xcrun simctl io "$UDID" screenshot "captures/phone-remote-holding.png" || true
+            xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
+            sleep 2
+            xcrun simctl io "$UDID" screenshot "captures/phone-home.png" || true
           fi
           ls -la captures
       - uses: actions/upload-artifact@v4

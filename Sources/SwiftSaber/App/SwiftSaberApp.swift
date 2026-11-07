@@ -11,6 +11,11 @@ enum Launcher {
             IconRenderer.exportIconset(to: URL(fileURLWithPath: args[i + 1]))
             exit(0)
         }
+        if let i = args.firstIndex(of: "--export-ios-icon"), i + 1 < args.count {
+            // Used by CI to (re)generate the iPhone app's icon from the same artwork.
+            IconRenderer.exportIOSIcon(to: URL(fileURLWithPath: args[i + 1]))
+            exit(0)
+        }
         if let i = args.firstIndex(of: "--demo-capture"), i + 1 < args.count {
             DemoOptions.captureDirectory = URL(fileURLWithPath: args[i + 1])
         }

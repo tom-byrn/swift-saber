@@ -3,7 +3,7 @@ import Network
 import QuartzCore
 import SaberCore
 
-/// Receives motion from the iPhone "Saber Controller" app over the local network.
+/// Receives motion from the Swift Saber iPhone app over the local network.
 ///
 /// The Mac advertises `_swiftsaber._udp` with Bonjour; the phone finds it, connects and
 /// streams attitude + gravity at ~100 Hz. Samples go into the `InputHub` as the `.phone`

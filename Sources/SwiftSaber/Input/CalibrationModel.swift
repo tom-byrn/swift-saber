@@ -142,10 +142,10 @@ final class CalibrationModel: ObservableObject {
         case .airpodAndPhone:
             if hasPhone && hasPod { return "AirPod and iPhone are both streaming — you'll get two sabers." }
             if hasPhone { return "iPhone connected. Waiting for AirPods motion — move the bud around to wake it." }
-            if hasPod { return "AirPod streaming. Waiting for the iPhone — open Saber Controller on the same Wi-Fi." }
+            if hasPod { return "AirPod streaming. Waiting for the iPhone — open Swift Saber on it (same Wi-Fi)." }
             return "Waiting for your AirPod and iPhone…"
         case .phone:
-            return hasPhone ? "iPhone connected." : "Open Saber Controller on your iPhone (same Wi-Fi network)."
+            return hasPhone ? "iPhone connected." : "Open Swift Saber on your iPhone (same Wi-Fi network)."
         default:
             return live > 0 ? "AirPod streaming — you're ready to calibrate." : "Move the AirPod around a little to wake it up."
         }

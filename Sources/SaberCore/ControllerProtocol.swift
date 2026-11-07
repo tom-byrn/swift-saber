@@ -1,6 +1,6 @@
 import Foundation
 
-/// Wire protocol between the Swift Saber Mac app and the iPhone "Saber Controller" app.
+/// Wire protocol between the Swift Saber Mac app and the Swift Saber iPhone app (the "controller").
 ///
 /// Transport: UDP datagrams, discovered via Bonjour (`_swiftsaber._udp`).
 /// Remote-control state and commands travel as JSON inside the same framing.

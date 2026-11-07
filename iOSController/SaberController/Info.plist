@@ -7,6 +7,6 @@
 		<string>_swiftsaber._udp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Saber Controller finds the Swift Saber game on your Mac and streams your phone's motion to it.</string>
+	<string>Swift Saber finds the game on your Mac and streams your phone's motion to it.</string>
 </dict>
 </plist>

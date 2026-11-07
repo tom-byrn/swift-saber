@@ -64,8 +64,6 @@ struct ConnectionView: View {
     var body: some View {
         VStack(spacing: 22) {
             Logo(size: 52)
-            Text("CONTROLLER").font(.system(size: 14, weight: .bold, design: .monospaced))
-                .tracking(6).foregroundStyle(.white.opacity(0.6))
 
             statusCard
 

@@ -105,7 +105,7 @@ struct CalibrationView: View {
                           "System Settings › your AirPods › Automatic Ear Detection: Off. Otherwise motion stops when the buds leave your ears."))
         }
         if mode.usesPhone {
-            steps.append(("Open Saber Controller on your iPhone",
+            steps.append(("Open Swift Saber on your iPhone",
                           "Same Wi-Fi network as this Mac. It finds the game automatically — allow Local Network access when asked."))
         }
         switch mode {
@@ -215,7 +215,7 @@ struct PhoneStatusBanner: View {
         case .connected(let name):
             Label("\(name) connected", systemImage: "iphone.radiowaves.left.and.right").font(Theme.body(13)).foregroundStyle(.green)
         case .waiting:
-            Label("Looking for Saber Controller on your iPhone…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
+            Label("Looking for Swift Saber on your iPhone…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
         case .failed(let msg):
             Label("Network error: \(msg)", systemImage: "exclamationmark.triangle.fill").font(Theme.body(13)).foregroundStyle(.orange)
         case .off:
