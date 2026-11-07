@@ -1,7 +1,7 @@
 import Foundation
 
 /// An sRGB colour with components in 0...1.
-public struct RGBColor: Codable, Equatable, Hashable, Sendable {
+public struct NeonColor: Codable, Equatable, Hashable, Sendable {
     public var r: Double
     public var g: Double
     public var b: Double
@@ -33,42 +33,42 @@ public struct RGBColor: Codable, Equatable, Hashable, Sendable {
     /// "#RRGGBB".
     public var hex: String { String(format: "#%02X%02X%02X", UInt32(r255), UInt32(g255), UInt32(b255)) }
 
-    public static let white = RGBColor(1, 1, 1)
-    public static let black = RGBColor(0, 0, 0)
+    public static let white = NeonColor(1, 1, 1)
+    public static let black = NeonColor(0, 0, 0)
 
     /// Linear blend towards `other`.
-    public func mixed(with other: RGBColor, _ t: Double) -> RGBColor {
-        RGBColor(r + (other.r - r) * t, g + (other.g - g) * t, b + (other.b - b) * t)
+    public func mixed(with other: NeonColor, _ t: Double) -> NeonColor {
+        NeonColor(r + (other.r - r) * t, g + (other.g - g) * t, b + (other.b - b) * t)
     }
 
     /// Multiplies every component (clamped).
-    public func scaled(_ k: Double) -> RGBColor { RGBColor(r * k, g * k, b * k) }
+    public func scaled(_ k: Double) -> NeonColor { NeonColor(r * k, g * k, b * k) }
 
     /// Perceived brightness (Rec. 709 luma), 0...1.
     public var luminance: Double { 0.2126 * r + 0.7152 * g + 0.0722 * b }
 
     /// A darker, more saturated variant used for block bodies: the strongest channel keeps
     /// most of its value while weaker channels sink, so blocks read as deep coloured glass.
-    public var deepened: RGBColor {
-        RGBColor(pow(r, 1.3) * 0.66, pow(g, 1.3) * 0.66, pow(b, 1.3) * 0.66)
+    public var deepened: NeonColor {
+        NeonColor(pow(r, 1.3) * 0.66, pow(g, 1.3) * 0.66, pow(b, 1.3) * 0.66)
     }
 
     /// The same colour lifted to full brightness (keeps hue and saturation). Black stays black.
-    public var maximized: RGBColor {
+    public var maximized: NeonColor {
         let m = max(r, max(g, b))
         guard m > 0.0001 else { return self }
-        return RGBColor(r / m, g / m, b / m)
+        return NeonColor(r / m, g / m, b / m)
     }
 }
 
 /// The colours a level is played with. Left/right lights replace the red/blue light events.
 public struct SaberColorScheme: Codable, Equatable, Hashable, Sendable {
-    public var leftSaber: RGBColor
-    public var rightSaber: RGBColor
-    public var leftLights: RGBColor
-    public var rightLights: RGBColor
+    public var leftSaber: NeonColor
+    public var rightSaber: NeonColor
+    public var leftLights: NeonColor
+    public var rightLights: NeonColor
 
-    public init(leftSaber: RGBColor, rightSaber: RGBColor, leftLights: RGBColor, rightLights: RGBColor) {
+    public init(leftSaber: NeonColor, rightSaber: NeonColor, leftLights: NeonColor, rightLights: NeonColor) {
         self.leftSaber = leftSaber
         self.rightSaber = rightSaber
         self.leftLights = leftLights
@@ -76,11 +76,11 @@ public struct SaberColorScheme: Codable, Equatable, Hashable, Sendable {
     }
 
     /// Saber and lights share the same two colours.
-    public init(left: RGBColor, right: RGBColor) {
+    public init(left: NeonColor, right: NeonColor) {
         self.init(leftSaber: left, rightSaber: right, leftLights: left, rightLights: right)
     }
 
-    public func saber(_ hand: Hand) -> RGBColor { hand == .left ? leftSaber : rightSaber }
+    public func saber(_ hand: Hand) -> NeonColor { hand == .left ? leftSaber : rightSaber }
 
     public enum Slot: Int, CaseIterable, Identifiable, Sendable {
         case leftSaber, rightSaber, leftLights, rightLights
@@ -95,7 +95,7 @@ public struct SaberColorScheme: Codable, Equatable, Hashable, Sendable {
         }
     }
 
-    public subscript(slot: Slot) -> RGBColor {
+    public subscript(slot: Slot) -> NeonColor {
         get {
             switch slot {
             case .leftSaber: return leftSaber
@@ -121,7 +121,7 @@ public struct SaberColorScheme: Codable, Equatable, Hashable, Sendable {
 
     /// The game's original red / blue look.
     public static let classic = SaberColorScheme(
-        left: RGBColor(1.0, 0.11, 0.2), right: RGBColor(0.1, 0.48, 1.0))
+        left: NeonColor(1.0, 0.11, 0.2), right: NeonColor(0.1, 0.48, 1.0))
 }
 
 /// A named, ready-made colour scheme.
@@ -134,7 +134,7 @@ public struct ColorPreset: Identifiable, Equatable, Sendable {
         self.id = id; self.name = name; self.scheme = scheme
     }
 
-    private static func hex(_ s: String) -> RGBColor { RGBColor(hex: s) ?? .white }
+    private static func hex(_ s: String) -> NeonColor { NeonColor(hex: s) ?? .white }
 
     public static let all: [ColorPreset] = [
         ColorPreset(id: "classic", name: "Classic", scheme: .classic),

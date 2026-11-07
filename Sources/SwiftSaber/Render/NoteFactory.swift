@@ -53,7 +53,7 @@ final class NoteFactory {
         return m
     }
 
-    static func makeBlock(color: RGBColor, arrow: Bool) -> SCNNode {
+    static func makeBlock(color: NeonColor, arrow: Bool) -> SCNNode {
         let size = CGFloat(Arena.blockSize)
         let holder = SCNNode()
 

@@ -401,7 +401,7 @@ struct SeededRandom {
     }
 }
 
-extension RGBColor {
+extension NeonColor {
     var ns: NSColor { NSColor(deviceRed: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: 1) }
     var simd: SIMD3<Float> { SIMD3(Float(r), Float(g), Float(b)) }
 }

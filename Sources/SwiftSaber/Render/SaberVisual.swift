@@ -21,7 +21,7 @@ final class SaberVisual {
 
     static let trailDuration = 0.11
 
-    init(hand: Hand, color rgb: RGBColor, root: SCNNode) {
+    init(hand: Hand, color rgb: NeonColor, root: SCNNode) {
         self.hand = hand
         let c = rgb.ns
         color = c
@@ -91,7 +91,7 @@ final class SaberVisual {
     }
 
     /// Recolours the blade, glow, hilt rings, light and trail.
-    func setColor(_ rgb: RGBColor) {
+    func setColor(_ rgb: NeonColor) {
         let c = rgb.ns
         color = c
         coreMaterial.emission.contents = Palette.mix(c, .white, 0.7)

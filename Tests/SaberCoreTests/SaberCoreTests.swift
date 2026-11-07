@@ -291,19 +291,19 @@ final class ControllerProtocolTests: XCTestCase {
 
 final class ColorSchemeTests: XCTestCase {
     func testHexRoundTrip() {
-        let c = RGBColor(hex: "#1A7FFF")
+        let c = NeonColor(hex: "#1A7FFF")
         XCTAssertEqual(c?.r255, 0x1A)
         XCTAssertEqual(c?.g255, 0x7F)
         XCTAssertEqual(c?.b255, 0xFF)
         XCTAssertEqual(c?.hex, "#1A7FFF")
-        XCTAssertEqual(RGBColor(hex: "f0a")?.hex, "#FF00AA")
-        XCTAssertEqual(RGBColor(hex: " 00ff00 ")?.hex, "#00FF00")
-        XCTAssertNil(RGBColor(hex: "#12345"))
-        XCTAssertNil(RGBColor(hex: "zzzzzz"))
+        XCTAssertEqual(NeonColor(hex: "f0a")?.hex, "#FF00AA")
+        XCTAssertEqual(NeonColor(hex: " 00ff00 ")?.hex, "#00FF00")
+        XCTAssertNil(NeonColor(hex: "#12345"))
+        XCTAssertNil(NeonColor(hex: "zzzzzz"))
     }
 
     func testComponentsAreClamped() {
-        let c = RGBColor(1.5, -0.2, 0.5)
+        let c = NeonColor(1.5, -0.2, 0.5)
         XCTAssertEqual(c.r, 1)
         XCTAssertEqual(c.g, 0)
         XCTAssertEqual(c.b, 0.5)
