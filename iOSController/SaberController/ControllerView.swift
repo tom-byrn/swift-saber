@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum Neon {
     static let red = Color(red: 1.0, green: 0.16, blue: 0.24)
@@ -9,12 +10,21 @@ enum Neon {
 
 /// The same type as the Mac game (Sources/SwiftSaber/UI/Theme.swift): Avenir Next Condensed
 /// for titles and buttons, rounded system text for body copy, monospaced for small labels.
+/// Avenir Next Condensed isn't always installed on iOS (it can be an on-demand download);
+/// without it the closest built-in face, SF Pro Condensed, stands in at the same weights.
 enum Theme {
+    static let hasAvenirCondensed = UIFont(name: "AvenirNextCondensed-HeavyItalic", size: 12) != nil
+        && UIFont(name: "AvenirNextCondensed-DemiBold", size: 12) != nil
+
     static func display(_ size: CGFloat) -> Font {
-        .custom("AvenirNextCondensed-HeavyItalic", size: size)
+        hasAvenirCondensed
+            ? .custom("AvenirNextCondensed-HeavyItalic", size: size)
+            : .system(size: size, weight: .heavy, design: .default).width(.condensed).italic()
     }
     static func heading(_ size: CGFloat) -> Font {
-        .custom("AvenirNextCondensed-DemiBold", size: size)
+        hasAvenirCondensed
+            ? .custom("AvenirNextCondensed-DemiBold", size: size)
+            : .system(size: size, weight: .semibold, design: .default).width(.condensed)
     }
     static func body(_ size: CGFloat = 15) -> Font {
         .system(size: size, weight: .medium, design: .rounded)

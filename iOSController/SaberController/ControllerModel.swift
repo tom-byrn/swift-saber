@@ -76,6 +76,7 @@ final class ControllerModel: ObservableObject {
     }
 
     func start() {
+        NSLog("SaberRemote fonts: %@", Theme.hasAvenirCondensed ? "Avenir Next Condensed" : "SF Pro Condensed (Avenir Next Condensed not installed)")
         if let h = Self.previewHand {
             hand = h
             calibrated = true
