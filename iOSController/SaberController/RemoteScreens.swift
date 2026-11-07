@@ -210,7 +210,7 @@ struct LoadingScreen: View {
                 .tint(Neon.blue)
                 .frame(width: 240)
             Text("Composing \u{201C}\(state.songTitle)\u{201D}…")
-                .font(.footnote).foregroundStyle(.white.opacity(0.6))
+                .font(Theme.body(13)).foregroundStyle(.white.opacity(0.6))
             Spacer()
         }
         .padding(24)
@@ -237,7 +237,7 @@ struct MenuScreen: View {
             Spacer(minLength: 4)
             Logo(size: 54)
             Text(readyText)
-                .font(.subheadline)
+                .font(Theme.body(15))
                 .foregroundStyle(state.sabersReady == 0 ? Neon.orange : Color.white.opacity(0.6))
                 .padding(.bottom, 10)
             Spacer(minLength: 4)
@@ -291,7 +291,7 @@ struct LevelSelectScreen: View {
                                 .shadow(color: Neon.blue.opacity(0.6), radius: 8)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(state.songTitle).font(Theme.display(34))
-                                Text(state.songInfo).font(.footnote).foregroundStyle(.white.opacity(0.6))
+                                Text(state.songInfo).font(Theme.body(13)).foregroundStyle(.white.opacity(0.6))
                             }
                         }
                     }
@@ -326,7 +326,7 @@ struct LevelSelectScreen: View {
                             Text(state.sabersReady == 0
                                  ? "No saber input yet — set up your sabers or switch to mouse input in Settings."
                                  : "Only one saber has input, so you'll play the One Saber map.")
-                                .font(.footnote).foregroundStyle(Neon.orange)
+                                .font(Theme.body(13)).foregroundStyle(Neon.orange)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
 
@@ -337,7 +337,7 @@ struct LevelSelectScreen: View {
 
                     Card {
                         HStack {
-                            Text(state.mapStats).font(.footnote).foregroundStyle(.white.opacity(0.7))
+                            Text(state.mapStats).font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
                             Spacer()
                         }
                         HStack {
@@ -347,7 +347,7 @@ struct LevelSelectScreen: View {
                                 .font(Theme.mono(14))
                                 .foregroundStyle(state.best == nil ? Color.white.opacity(0.5) : Color.white)
                         }
-                        .font(.subheadline)
+                        .font(Theme.body(15))
                     }
                 }
                 .padding(.horizontal, 20)
@@ -426,22 +426,22 @@ struct CalibrationScreen: View {
                                 Text(s.name)
                                 Spacer()
                                 Text(s.live ? "Streaming" : "No data")
-                                    .font(.footnote)
+                                    .font(Theme.body(13))
                                     .foregroundStyle(s.live ? Color.green : Color.gray)
                             }
                         }
                         Text(cal.detail)
-                            .font(.footnote).foregroundStyle(.white.opacity(0.65))
+                            .font(Theme.body(13)).foregroundStyle(.white.opacity(0.65))
                             .fixedSize(horizontal: false, vertical: true)
                         if let failure = cal.failure {
                             Label(failure, systemImage: "exclamationmark.triangle.fill")
-                                .font(.footnote).foregroundStyle(Neon.orange)
+                                .font(Theme.body(13)).foregroundStyle(Neon.orange)
                         }
                     }
                     Card {
                         SectionLabel("How it works")
                         Text("Hold your sabers and stand facing the screen. You'll point at the screen, then at the ceiling, then at the screen again — holding still until each ring fills.")
-                            .font(.footnote).foregroundStyle(.white.opacity(0.7))
+                            .font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -469,7 +469,7 @@ struct CalibrationScreen: View {
                 .font(Theme.display(40))
                 .multilineTextAlignment(.center)
             Text(cal.detail)
-                .font(.body).foregroundStyle(.white.opacity(0.75))
+                .font(Theme.body(17)).foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 28) {
@@ -487,7 +487,7 @@ struct CalibrationScreen: View {
                                 .font(.system(size: 24, weight: .bold))
                         }
                         .frame(width: 84, height: 84)
-                        Text(s.name).font(.footnote).foregroundStyle(.white.opacity(0.7))
+                        Text(s.name).font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
                     }
                 }
             }
@@ -508,7 +508,7 @@ struct CalibrationScreen: View {
                 .shadow(color: Neon.blue, radius: 12)
             Text(cal.title).font(Theme.display(40))
             Text(cal.detail)
-                .font(.body).foregroundStyle(.white.opacity(0.75))
+                .font(Theme.body(17)).foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
             Spacer()
             NeonButton(title: "PLAY NOW", icon: "play.fill", color: Neon.red, prominent: true, height: 64) {
@@ -564,7 +564,7 @@ struct SettingsScreen: View {
                                 .foregroundStyle(Neon.blue)
                             }
                         }
-                        Text(g.inputDetail).font(.footnote).foregroundStyle(.white.opacity(0.6))
+                        Text(g.inputDetail).font(Theme.body(13)).foregroundStyle(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("AirPod hand")
@@ -639,7 +639,7 @@ struct CountdownScreen: View {
                 .contentTransition(.numericText())
                 .animation(.snappy, value: state.countdown)
             Text("Point at the screen")
-                .font(.footnote).foregroundStyle(.white.opacity(0.55))
+                .font(Theme.body(13)).foregroundStyle(.white.opacity(0.55))
             Spacer()
         }
         .padding(24)
@@ -692,7 +692,7 @@ struct PlayingScreen: View {
                 model.send(.pause, haptic: false)
             }
             Text("Swing freely — only a long press pauses the game.")
-                .font(.footnote).foregroundStyle(.white.opacity(0.5))
+                .font(Theme.body(13)).foregroundStyle(.white.opacity(0.5))
                 .padding(.bottom, 18)
         }
         .onAppear {
@@ -777,7 +777,7 @@ struct PausedScreen: View {
                 NeonButton(title: "QUIT", icon: "house.fill", color: .gray) { model.send(.quitToMenu) }
             }
             Text("Point at the screen centre before tapping Recenter.")
-                .font(.footnote).foregroundStyle(.white.opacity(0.5))
+                .font(Theme.body(13)).foregroundStyle(.white.opacity(0.5))
                 .padding(.top, 4)
         }
         .padding(.horizontal, 22)
@@ -836,6 +836,6 @@ struct ResultsScreen: View {
             Spacer()
             Text(value).font(Theme.mono(14))
         }
-        .font(.subheadline)
+        .font(Theme.body(15))
     }
 }

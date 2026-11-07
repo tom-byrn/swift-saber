@@ -81,7 +81,9 @@ struct ControllerView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .fontDesign(.rounded)
+        // Default for text without its own font (toggle and picker labels). Don't use
+        // .fontDesign(.rounded) here: it also turns the custom Avenir fonts into SF Rounded.
+        .font(Theme.body(16))
         .animation(.easeInOut(duration: 0.2), value: model.remote?.screen)
         .onChange(of: model.lastHit) { _, _ in
             flash = true
@@ -128,7 +130,7 @@ struct ConnectionView: View {
                 }
             }
             Text("Grip the phone like a sword hilt — any orientation works. Once connected, every menu of the game appears here.")
-                .font(.footnote)
+                .font(Theme.body(13))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.55))
                 .padding(.horizontal, 8)
@@ -148,7 +150,7 @@ struct ConnectionView: View {
                     Text("Looking for Swift Saber on your Mac…").foregroundStyle(.white)
                 }
                 Text("Open the game on your Mac and make sure both devices are on the same Wi-Fi.")
-                    .font(.footnote).foregroundStyle(.white.opacity(0.6))
+                    .font(Theme.body(13)).foregroundStyle(.white.opacity(0.6))
                     .fixedSize(horizontal: false, vertical: true)
             case .connecting(let name):
                 HStack(spacing: 10) {
@@ -159,7 +161,7 @@ struct ConnectionView: View {
                 Label("Connected to \(name)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                 Label(model.calibrated ? "Calibrated" : "Not calibrated yet — run Set Up Sabers on the Mac",
                       systemImage: model.calibrated ? "scope" : "exclamationmark.triangle.fill")
-                    .font(.footnote)
+                    .font(Theme.body(13))
                     .foregroundStyle(model.calibrated ? Color.white.opacity(0.8) : Color.orange)
             }
             if model.macs.count > 1 {
@@ -168,7 +170,7 @@ struct ConnectionView: View {
                         Button(mac.id) { model.connect(to: mac) }
                     }
                 }
-                .font(.footnote)
+                .font(Theme.body(13))
             }
             if !model.motionAvailable {
                 Label("This device has no motion sensors.", systemImage: "exclamationmark.triangle.fill")
