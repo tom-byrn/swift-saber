@@ -5,19 +5,7 @@ import SaberCore
 
 /// The "Prism Hall" stage: a reflective runway in a dark void, receding octagonal prism rings,
 /// sweeping laser fans and a horizon emblem. Every light is driven by the beatmap's light events.
-final class StageEnvironment {
-    let root = SCNNode()
-
-    private struct GroupState {
-        var color: LightColor = .off
-        var base: Double = 0
-        var flash: Double = 0
-        var shown = SIMD3<Float>(0, 0, 0)
-    }
-
-    private var materials: [LightGroup: [SCNMaterial]] = [:]
-    private var states: [LightGroup: GroupState] = [:]
-
+final class PrismHallStage: Stage {
     private var rings: [SCNNode] = []
     private var ringAngles: [Double] = []
     private var ringSpinVelocity: Double = 0.15
@@ -27,71 +15,26 @@ final class StageEnvironment {
 
     private var leftLasers: [SCNNode] = []
     private var rightLasers: [SCNNode] = []
-    private var laserSpeed: [LightGroup: Double] = [.leftLasers: 0.6, .rightLasers: 0.6]
     private var laserPhase: [LightGroup: Double] = [.leftLasers: 0, .rightLasers: 1.7]
 
-    private let backLight = SCNLight()
-    private var time: Double = 0
+    private var backLight: SCNLight?
 
-    var bloomEnabled = true
-
-    init() {
-        for g in LightGroup.allCases {
-            materials[g] = []
-            states[g] = GroupState()
-        }
+    override func build() {
         buildFloor()
         buildRings()
         buildLasers()
         buildBack()
-        buildLights()
-        buildParticles()
-        idle()
-    }
-
-    private func groupMaterial(_ g: LightGroup, glow: Bool = false) -> SCNMaterial {
-        let m = glow ? Materials.glow(.black, intensity: 1, opacity: 0.35) : Materials.neon(.black)
-        materials[g]!.append(m)
-        return m
+        addBaseLights()
+        backLight = makeGroupLight(at: SCNVector3(0, 10, -26))
+        addDust()
     }
 
     // MARK: Build
 
     private func buildFloor() {
-        let floor = SCNFloor()
-        floor.reflectivity = 0.22
-        floor.reflectionFalloffEnd = 8
-        floor.reflectionResolutionScaleFactor = 0.5
-        let fm = SCNMaterial()
-        fm.lightingModel = .physicallyBased
-        fm.diffuse.contents = NSColor(calibratedWhite: 0.015, alpha: 1)
-        fm.roughness.contents = 0.45
-        fm.metalness.contents = 0.4
-        floor.materials = [fm]
-        let floorNode = SCNNode(geometry: floor)
-        root.addChildNode(floorNode)
-
-        // Player platform with glowing trim.
-        let platform = SCNBox(width: 3.4, height: 0.08, length: 2.6, chamferRadius: 0.02)
-        platform.materials = [Materials.metal(NSColor(calibratedWhite: 0.05, alpha: 1), roughness: 0.5, metalness: 0.7)]
-        let pn = SCNNode(geometry: platform)
-        pn.position = SCNVector3(0, -0.035, 0.6)
-        root.addChildNode(pn)
-
+        addFloor()
         let trimMat = groupMaterial(.floor)
-        let trims: [(SCNVector3, CGFloat, CGFloat)] = [
-            (SCNVector3(0, 0.01, -0.7), 3.4, 0.03),
-            (SCNVector3(0, 0.01, 1.9), 3.4, 0.03),
-            (SCNVector3(-1.7, 0.01, 0.6), 0.03, 2.6),
-            (SCNVector3(1.7, 0.01, 0.6), 0.03, 2.6),
-        ]
-        for (pos, w, l) in trims {
-            let b = SCNBox(width: w, height: 0.02, length: l, chamferRadius: 0)
-            b.materials = [trimMat]
-            let n = SCNNode(geometry: b)
-            n.position = pos
-            root.addChildNode(n)
-        }
+        addPlatform(trimMaterial: trimMat)
 
         // Runway rails.
         let rails = SCNNode()
@@ -248,130 +191,29 @@ final class StageEnvironment {
         root.addChildNode(back.flattenedClone())
     }
 
-    private func buildLights() {
-        let ambient = SCNLight()
-        ambient.type = .ambient
-        ambient.intensity = 180
-        ambient.color = NSColor(calibratedRed: 0.45, green: 0.5, blue: 0.7, alpha: 1)
-        let an = SCNNode()
-        an.light = ambient
-        root.addChildNode(an)
-
-        let key = SCNLight()
-        key.type = .directional
-        key.intensity = 900
-        key.color = NSColor(calibratedWhite: 0.95, alpha: 1)
-        let kn = SCNNode()
-        kn.light = key
-        kn.eulerAngles = SCNVector3(-0.9, 0.25, 0)
-        root.addChildNode(kn)
-
-        backLight.type = .omni
-        backLight.intensity = 0
-        backLight.attenuationStartDistance = 4
-        backLight.attenuationEndDistance = 40
-        let bn = SCNNode()
-        bn.light = backLight
-        bn.position = SCNVector3(0, 10, -26)
-        root.addChildNode(bn)
-    }
-
-    private func buildParticles() {
-        let dust = SCNParticleSystem()
-        dust.birthRate = 30
-        dust.particleLifeSpan = 9
-        dust.particleLifeSpanVariation = 3
-        dust.particleSize = 0.035
-        dust.particleSizeVariation = 0.02
-        dust.particleColor = NSColor(calibratedRed: 0.6, green: 0.75, blue: 1, alpha: 0.35)
-        dust.particleImage = Textures.softDot
-        dust.blendMode = .additive
-        dust.isLightingEnabled = false
-        dust.particleVelocity = 0.25
-        dust.particleVelocityVariation = 0.2
-        dust.spreadingAngle = 180
-        dust.emitterShape = SCNBox(width: 14, height: 8, length: 40, chamferRadius: 0)
-        dust.birthLocation = .volume
-        dust.warmupDuration = 8
-        let dn = SCNNode()
-        dn.position = SCNVector3(0, 4, -18)
-        dn.addParticleSystem(dust)
-        root.addChildNode(dn)
-    }
-
     // MARK: Events
 
-    func idle() {
-        apply(.on(.blue), to: .back)
-        apply(.on(.blue), to: .floor)
-        apply(.on(.blue), to: .rings)
-        apply(.on(.red), to: .leftLasers)
-        apply(.on(.blue), to: .rightLasers)
-        laserSpeed[.leftLasers] = 0.5
-        laserSpeed[.rightLasers] = 0.5
+    override func idle() {
+        super.idle()
         ringSpinTarget = 0.12
     }
 
-    func blackout() {
-        for g in LightGroup.allCases { apply(.off, to: g) }
+    override func spin(_ d: Double) {
+        ringSpinVelocity = d * 2.4
+        ringSpinTarget = d * 0.18
     }
 
-    func apply(_ action: LightAction, to group: LightGroup) {
-        var s = states[group]!
-        switch action {
-        case .on(let c):
-            s.color = c; s.base = 1; s.flash = 0
-        case .flash(let c):
-            s.color = c; s.base = 1; s.flash = 1
-        case .fade(let c):
-            s.color = c; s.base = 0; s.flash = 1
-        case .off:
-            s.base = 0; s.flash = 0
-        case .speed(let v):
-            laserSpeed[group] = v
-        case .spin(let d):
-            ringSpinVelocity = d * 2.4
-            ringSpinTarget = d * 0.18
-        case .zoom:
-            ringSpacingTarget = ringSpacingTarget > 6 ? 4.2 : 7
-        }
-        states[group] = s
+    override func zoom() {
+        ringSpacingTarget = ringSpacingTarget > 6 ? 4.2 : 7
     }
 
-    /// Advances animation. `pulse` adds a little extra glow on the beat in menus.
-    func update(dt: Double) {
-        time += dt
-        for g in LightGroup.allCases {
-            var s = states[g]!
-            s.flash *= exp(-dt * 5.5)
-            let intensity = Float(s.base * 0.85 + s.flash * 2.4)
-            let target = Palette.simd(Palette.light(s.color)) * intensity
-            let k = Float(1 - exp(-dt * 30))
-            s.shown += (target - s.shown) * k
-            states[g] = s
-            let c = s.shown
-            let maxC = max(c.x, max(c.y, c.z))
-            let color: NSColor
-            let mult: CGFloat
-            if maxC > 1 {
-                color = NSColor(deviceRed: CGFloat(c.x / maxC), green: CGFloat(c.y / maxC), blue: CGFloat(c.z / maxC), alpha: 1)
-                mult = CGFloat(maxC)
-            } else {
-                color = NSColor(deviceRed: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1)
-                mult = 1
-            }
-            for m in materials[g]! {
-                m.emission.contents = color
-                m.emission.intensity = mult * (m.blendMode == .add ? 0.9 : 1.8)
-            }
-            if g == .back || g == .rings {
-                if g == .rings {
-                    backLight.color = color
-                    backLight.intensity = CGFloat(min(maxC, 3)) * 350
-                }
-            }
-        }
+    override func groupDidUpdate(_ group: LightGroup, color: NSColor, level: CGFloat) {
+        guard group == .rings, let backLight else { return }
+        backLight.color = color
+        backLight.intensity = min(level, 3) * 350
+    }
 
+    override func animate(dt: Double) {
         // Rings: spin decays towards a slow drift; zoom eases spacing.
         ringSpinVelocity += (ringSpinTarget - ringSpinVelocity) * (1 - exp(-dt * 1.6))
         ringSpacing += (ringSpacingTarget - ringSpacing) * (1 - exp(-dt * 2.5))

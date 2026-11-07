@@ -18,24 +18,32 @@ final class NoteFactory {
     """
     static let noClip = SCNVector4(0, 0, 0, -1)
 
-    private let arrowPrototypes: [Hand: SCNNode]
-    private let dotPrototypes: [Hand: SCNNode]
+    private var arrowPrototypes: [Hand: SCNNode] = [:]
+    private var dotPrototypes: [Hand: SCNNode] = [:]
     private let bombPrototype: SCNNode
-    private let sparkPrototypes: [Hand: SCNParticleSystem]
+    private var sparkPrototypes: [Hand: SCNParticleSystem] = [:]
+    private(set) var colors: SaberColorScheme
 
-    init() {
-        var arrows: [Hand: SCNNode] = [:]
-        var dots: [Hand: SCNNode] = [:]
-        var sparks: [Hand: SCNParticleSystem] = [:]
-        for hand in Hand.allCases {
-            arrows[hand] = NoteFactory.makeBlock(hand: hand, arrow: true)
-            dots[hand] = NoteFactory.makeBlock(hand: hand, arrow: false)
-            sparks[hand] = NoteFactory.makeSparks(color: Palette.saber(hand))
-        }
-        arrowPrototypes = arrows
-        dotPrototypes = dots
-        sparkPrototypes = sparks
+    init(colors: SaberColorScheme) {
+        self.colors = colors
         bombPrototype = NoteFactory.makeBomb()
+        rebuild()
+    }
+
+    /// Recolours the blocks and sparks (affects blocks spawned from now on).
+    func setColors(_ c: SaberColorScheme) {
+        guard c != colors else { return }
+        colors = c
+        rebuild()
+    }
+
+    private func rebuild() {
+        for hand in Hand.allCases {
+            let c = colors.saber(hand)
+            arrowPrototypes[hand] = NoteFactory.makeBlock(color: c, arrow: true)
+            dotPrototypes[hand] = NoteFactory.makeBlock(color: c, arrow: false)
+            sparkPrototypes[hand] = NoteFactory.makeSparks(color: c.ns)
+        }
     }
 
     static func clipMaterial(_ m: SCNMaterial) -> SCNMaterial {
@@ -45,19 +53,20 @@ final class NoteFactory {
         return m
     }
 
-    static func makeBlock(hand: Hand, arrow: Bool) -> SCNNode {
+    static func makeBlock(color: RGBColor, arrow: Bool) -> SCNNode {
         let size = CGFloat(Arena.blockSize)
         let holder = SCNNode()
 
         let box = SCNBox(width: size, height: size, length: size, chamferRadius: size * 0.14)
-        let body = Materials.metal(Palette.blockBody(hand), roughness: 0.28, metalness: 0.55)
-        body.emission.contents = Palette.blockBody(hand)
+        let bodyColor = color.deepened.ns
+        let body = Materials.metal(bodyColor, roughness: 0.28, metalness: 0.55)
+        body.emission.contents = bodyColor
         body.emission.intensity = 0.55
         box.materials = [clipMaterial(body)]
         holder.addChildNode(SCNNode(geometry: box))
 
         // Thin glowing frame around the front face.
-        let frameMat = clipMaterial(Materials.neon(Palette.saber(hand), intensity: 1.1))
+        let frameMat = clipMaterial(Materials.neon(color.ns, intensity: 1.1))
         let edge = size * 0.98
         let t: CGFloat = 0.018
         let half = size / 2

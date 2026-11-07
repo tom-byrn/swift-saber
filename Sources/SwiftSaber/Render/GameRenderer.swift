@@ -60,9 +60,11 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     let scene = SCNScene()
     private let cameraNode = SCNNode()
     private let camera = SCNCamera()
-    private let stage = StageEnvironment()
+    private var stage: Stage
+    private(set) var stageKind: StageKind
+    private var colors: SaberColorScheme
     private let effects = EffectsLayer()
-    private let factory = NoteFactory()
+    private let factory: NoteFactory
     private let notesRoot = SCNNode()
     private var sabers: [Hand: SaberVisual] = [:]
 
@@ -96,16 +98,18 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     private var autoplay: AutoplayDriver?
     private let cameraBase = Arena.cameraPosition.simd
 
-    init(input: InputHub, audio: GameAudio) {
+    init(input: InputHub, audio: GameAudio, stage kind: StageKind = .prismHall, colors: SaberColorScheme = .classic) {
         self.input = input
         self.audio = audio
+        stageKind = kind
+        self.colors = colors
+        stage = kind.makeStage(colors: colors)
+        factory = NoteFactory(colors: colors)
         super.init()
 
         scene.background.contents = NSColor.black
-        scene.fogStartDistance = 28
-        scene.fogEndDistance = 150
         scene.fogDensityExponent = 1.3
-        scene.fogColor = Palette.fog
+        applyAtmosphere()
 
         camera.fieldOfView = 64
         camera.zNear = 0.05
@@ -130,7 +134,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         scene.rootNode.addChildNode(notesRoot)
         scene.rootNode.addChildNode(effects.root)
         for hand in Hand.allCases {
-            sabers[hand] = SaberVisual(hand: hand, root: scene.rootNode)
+            sabers[hand] = SaberVisual(hand: hand, color: colors.saber(hand), root: scene.rootNode)
         }
 
         view.scene = scene
@@ -151,6 +155,67 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         camera.bloomIntensity = bloom ? 1.35 : 0
         camera.colorFringeStrength = bloom ? 0.35 : 0
         cameraShakeEnabled = cameraShake
+    }
+
+    // MARK: Arena & colours (main thread)
+
+    /// Switches the environment and/or the colour scheme. Building a new arena happens off the
+    /// render lock; only the swap itself blocks a frame.
+    func setLook(stage kind: StageKind, colors newColors: SaberColorScheme) {
+        lock.lock()
+        let sameStage = kind == stageKind
+        let sameColors = newColors == colors
+        lock.unlock()
+        if sameStage && sameColors { return }
+
+        let replacement = sameStage ? nil : kind.makeStage(colors: newColors)
+
+        lock.lock(); defer { lock.unlock() }
+        colors = newColors
+        factory.setColors(newColors)
+        for (hand, saber) in sabers { saber.setColor(newColors.saber(hand)) }
+        if let replacement {
+            let old = stage
+            old.root.removeFromParentNode()
+            stage = replacement
+            stageKind = kind
+            scene.rootNode.insertChildNode(replacement.root, at: 0)
+            applyAtmosphere()
+            switch mode {
+            case .menu, .ended: replacement.idle()
+            case .countdown, .paused, .playing:
+                replacement.blackout()
+                replacement.apply(.on(.blue), to: .floor)
+                replacement.apply(.on(.blue), to: .back)
+            }
+        } else {
+            stage.setColors(newColors)
+        }
+    }
+
+    /// Fires a short burst of every light group so colour changes can be previewed in menus.
+    func previewLights() {
+        lock.lock(); defer { lock.unlock() }
+        guard mode == .menu else { return }
+        stage.apply(.flash(.red), to: .leftLasers)
+        stage.apply(.flash(.blue), to: .rightLasers)
+        stage.apply(.flash(.red), to: .rings)
+        stage.apply(.flash(.blue), to: .back)
+        stage.apply(.flash(.blue), to: .floor)
+        stage.apply(.spin(1), to: .rings)
+        stage.apply(.speed(2.5), to: .leftLasers)
+        stage.apply(.speed(2.5), to: .rightLasers)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); defer { self.lock.unlock() }
+            if self.mode == .menu { self.stage.idle() }
+        }
+    }
+
+    private func applyAtmosphere() {
+        scene.fogColor = stage.fogColor
+        scene.fogStartDistance = stage.fogStart
+        scene.fogEndDistance = stage.fogEnd
     }
 
     // MARK: Mouse aiming (main thread)
