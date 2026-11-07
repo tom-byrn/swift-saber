@@ -60,8 +60,9 @@ final class AppModel: ObservableObject {
     var demoCaptureDirectory: URL?
 
     init() {
-        settings = GameSettings.load()
-        renderer = GameRenderer(input: hub, audio: audio, stage: settings.stage, colors: settings.effectiveColors)
+        let loaded = GameSettings.load()
+        settings = loaded
+        renderer = GameRenderer(input: hub, audio: audio, stage: loaded.stage, colors: loaded.effectiveColors)
         motion = HeadphoneMotionService(hub: hub)
         phone = PhoneControllerServer(hub: hub)
 
