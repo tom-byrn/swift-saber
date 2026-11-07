@@ -29,6 +29,11 @@ final class ControllerModel: ObservableObject {
     @Published private(set) var calibrated = false
     @Published private(set) var motionAvailable = true
     @Published private(set) var lastHit: Date = .distantPast
+    /// The Mac is running saber calibration.
+    @Published private(set) var calibrating = false
+    /// The current pose is captured: NEXT moves calibration on.
+    @Published private(set) var canAdvance = false
+    @Published private(set) var calibrationPrompt = ""
 
     private let motion = CMMotionManager()
     private let motionQueue: OperationQueue = {
@@ -174,6 +179,14 @@ final class ControllerModel: ObservableObject {
             if link != .connected(macName.isEmpty ? (preferredMac ?? "Mac") : macName) {
                 link = .connected(macName.isEmpty ? (preferredMac ?? "Mac") : macName)
             }
+        case let .calibration(active, canAdvance, prompt):
+            if calibrating != active { calibrating = active }
+            if self.canAdvance != canAdvance {
+                self.canAdvance = canAdvance
+                // Buzz when the pose is captured so the player knows they can move.
+                if canAdvance { heavy.impactOccurred(intensity: 0.8) }
+            }
+            if calibrationPrompt != prompt { calibrationPrompt = prompt }
         case let .haptic(intensity):
             if intensity >= 0.9 {
                 heavy.impactOccurred(intensity: 1)
@@ -194,6 +207,8 @@ final class ControllerModel: ObservableObject {
             connection = nil
             link = .searching
             hand = -1
+            calibrating = false
+            canAdvance = false
             if let first = macs.first(where: { $0.id == preferredMac }) ?? macs.first { connect(to: first) }
         } else if connection == nil, let first = macs.first(where: { $0.id == preferredMac }) ?? macs.first {
             // The last connection failed while the Mac is still advertised; Bonjour won't

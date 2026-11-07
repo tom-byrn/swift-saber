@@ -18,7 +18,7 @@ final class PhoneControllerServer: ObservableObject {
 
     @Published private(set) var status: Status = .off
 
-    /// Called on the main thread when the phone's Recenter / Pause buttons are tapped.
+    /// Called on the main thread when the phone's Recenter / Pause / Next buttons are tapped.
     var onButton: ((ControllerButton) -> Void)?
 
     private let hub: InputHub
@@ -123,7 +123,7 @@ final class PhoneControllerServer: ObservableObject {
             phoneName = name
         case let .button(b):
             DispatchQueue.main.async { self.onButton?(b) }
-        case .status, .haptic:
+        case .status, .haptic, .calibration:
             break // Mac → phone only
         }
         if wasIdle || !isConnectedSnapshot {
@@ -155,6 +155,11 @@ final class PhoneControllerServer: ObservableObject {
     func sendStatus(hand: Hand?, calibrated: Bool) {
         let h: Int8 = hand.map { Int8($0.rawValue) } ?? -1
         send(.status(hand: h, calibrated: calibrated, macName: Self.macName))
+    }
+
+    /// Tells the phone whether calibration is running and whether it can show a Next button.
+    func sendCalibration(active: Bool, canAdvance: Bool, prompt: String) {
+        send(.calibration(active: active, canAdvance: canAdvance, prompt: prompt))
     }
 
     func sendHaptic(_ intensity: Float) {

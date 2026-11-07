@@ -67,6 +67,12 @@ struct CalibrationView: View {
                                 Text(s.live ? "Streaming · \(Int(s.rate)) Hz" : "No data")
                                     .font(Theme.body(12))
                                     .foregroundStyle(s.live ? Color.green : Color.gray)
+                                if s.live, let r = s.reading {
+                                    Text(String(format: "yaw %+.0f°  pitch %+.0f°  roll %+.0f°", r.yaw, r.pitch, r.roll))
+                                        .font(Theme.mono(10.5))
+                                        .foregroundStyle(.white.opacity(0.55))
+                                        .monospacedDigit()
+                                }
                             }
                             Spacer()
                         }
@@ -141,32 +147,66 @@ struct CalibrationView: View {
 
     private var calibrating: some View {
         let active = calibration.streams.filter { $0.step != nil }
-        let text = CalibrationModel.instruction(for: calibration.currentStep, count: active.count)
-        return Panel(padding: 36) {
-            VStack(spacing: 28) {
-                PoseIllustration(step: calibration.currentStep)
-                    .frame(width: 180, height: 150)
+        let text = CalibrationModel.instruction(for: calibration.currentStep, count: active.count,
+                                                awaitingNext: calibration.canAdvance)
+        return Panel(padding: 32) {
+            VStack(spacing: 18) {
+                PoseIllustration(step: calibration.canAdvance ? nextStep(after: calibration.currentStep) : calibration.currentStep)
+                    .frame(width: 180, height: 110)
                 VStack(spacing: 10) {
-                    Text(text.title).font(Theme.display(42)).foregroundStyle(.white)
+                    Text(text.title).font(Theme.display(40)).foregroundStyle(.white)
                     Text(text.detail)
                         .font(Theme.body(16))
                         .foregroundStyle(.white.opacity(0.75))
                         .multilineTextAlignment(.center)
-                        .frame(maxWidth: 560)
+                        .frame(maxWidth: 600)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 40) {
+                HStack(alignment: .top, spacing: 24) {
                     ForEach(active) { s in
-                        HoldRing(label: s.id.label, progress: s.progress,
-                                 color: s.id == .left ? Theme.red : Theme.blue,
-                                 done: stepIndex(s.step) > stepIndex(calibration.currentStep))
+                        HStack(alignment: .center, spacing: 12) {
+                            HoldRing(label: s.id.label, progress: s.progress,
+                                     color: color(for: s.id),
+                                     done: s.awaitingNext || stepIndex(s.step) > stepIndex(calibration.currentStep))
+                            if let r = s.reading {
+                                SensorReadout(reading: r, step: calibration.currentStep,
+                                              awaiting: s.awaitingNext, color: color(for: s.id))
+                            }
+                        }
                     }
                 }
-                Button("Restart") { calibration.restart() }
-                    .buttonStyle(NeonButtonStyle(color: .gray))
+                HStack(spacing: 16) {
+                    Button("Restart") { calibration.restart() }
+                        .buttonStyle(NeonButtonStyle(color: .gray))
+                    Button("Next ›") { model.calibrationNext() }
+                        .buttonStyle(NeonButtonStyle(color: Theme.blue, prominent: true, width: 220))
+                        .disabled(!calibration.canAdvance)
+                }
+                Text(calibration.canAdvance
+                     ? "Press Next, Return or Space — or tap NEXT on the iPhone — when you're ready."
+                     : "Hold still until the ring fills. You'll get a chance to move before the next step.")
+                    .font(Theme.body(12.5))
+                    .foregroundStyle(.white.opacity(0.5))
             }
             .frame(maxWidth: .infinity)
         }
-        .frame(width: 760)
+        .frame(width: 860)
+    }
+
+    private func color(for id: StreamID) -> Color {
+        switch id {
+        case .left: return Theme.red
+        case .phone: return Color(red: 0.75, green: 0.55, blue: 1.0)
+        default: return Theme.blue
+        }
+    }
+
+    private func nextStep(after s: CalibrationProcess.Step) -> CalibrationProcess.Step {
+        switch s {
+        case .pointAtScreen: return .pointUp
+        case .pointUp: return .confirmCenter
+        default: return s
+        }
     }
 
     private func stepIndex(_ s: CalibrationProcess.Step?) -> Int {
@@ -292,6 +332,70 @@ struct HoldRing: View {
             }
             .frame(width: 90, height: 90)
             Text(label).font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
+        }
+    }
+}
+
+/// Live numbers for one sensor while calibrating: raw attitude, gravity, distance from the
+/// captured screen pose and how steady the hand is.
+struct SensorReadout: View {
+    var reading: CalibrationModel.Reading
+    var step: CalibrationProcess.Step
+    var awaiting: Bool
+    var color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            row("YAW", String(format: "%+7.1f°", reading.yaw))
+            row("PITCH", String(format: "%+7.1f°", reading.pitch))
+            row("ROLL", String(format: "%+7.1f°", reading.roll))
+            row("GRAVITY", String(format: "%+.2f %+.2f %+.2f", reading.gravity.x, reading.gravity.y, reading.gravity.z))
+            Divider().background(Color.white.opacity(0.15))
+            if let d = reading.fromScreen {
+                row("FROM SCREEN", String(format: "%5.1f°", d), valueColor: fromScreenColor(d))
+                if let target = target {
+                    Text(target).font(Theme.mono(10)).foregroundStyle(.white.opacity(0.45))
+                }
+            } else {
+                row("FROM SCREEN", "—")
+            }
+            if let m = reading.motion {
+                let steady = m < 5
+                row("MOVEMENT", String(format: "%5.1f°", m), valueColor: steady ? .green : .orange)
+            }
+            if !awaiting, let hint = reading.hint {
+                Label(hint, systemImage: "arrow.up.forward")
+                    .font(Theme.body(11.5)).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(width: 240, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.45), lineWidth: 1))
+    }
+
+    private var target: String? {
+        switch step {
+        case .pointUp: return String(format: "ceiling needs > %.0f°", CalibrationProcess.minimumRaiseDegrees)
+        case .confirmCenter: return String(format: "centre needs < %.0f°", CalibrationProcess.maximumRecenterDegrees)
+        default: return nil
+        }
+    }
+
+    private func fromScreenColor(_ d: Double) -> Color {
+        switch step {
+        case .pointUp: return d > CalibrationProcess.minimumRaiseDegrees ? .green : .orange
+        case .confirmCenter: return d < CalibrationProcess.maximumRecenterDegrees ? .green : .orange
+        default: return .white
+        }
+    }
+
+    private func row(_ label: String, _ value: String, valueColor: Color = .white) -> some View {
+        HStack {
+            Text(label).font(Theme.mono(10.5)).foregroundStyle(.white.opacity(0.5))
+            Spacer()
+            Text(value).font(Theme.mono(12)).foregroundStyle(valueColor).monospacedDigit()
         }
     }
 }

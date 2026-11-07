@@ -91,7 +91,7 @@ Prefer not to build? Every push is built by GitHub Actions. Download the **Swift
 
 ### 4. Calibrate and play
 
-Choose **Set Up Sabers**, then point at the screen, at the ceiling, and at the screen again, holding still until each ring fills. Then hit **Play**.
+Choose **Set Up Sabers**, then point at the screen, at the ceiling, and at the screen again, holding still until each ring fills. After each pose, press **Next** (on screen, Return / Space, or the **NEXT** button on the iPhone) when you are ready for the next one. Live readouts show each device's orientation while you calibrate. Then hit **Play**.
 
 ## Controls
 

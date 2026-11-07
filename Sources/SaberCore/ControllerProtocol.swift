@@ -15,6 +15,8 @@ public enum ControllerProtocol {
 public enum ControllerButton: UInt8, Sendable {
     case recenter = 1
     case pause = 2
+    /// Moves calibration on to the next pose.
+    case next = 3
 }
 
 public enum ControllerMessage: Equatable, Sendable {
@@ -28,9 +30,12 @@ public enum ControllerMessage: Equatable, Sendable {
     case status(hand: Int8, calibrated: Bool, macName: String)
     /// Mac → Phone: play a haptic tap (0...1).
     case haptic(intensity: Float)
+    /// Mac → Phone: calibration progress, so the phone can show a Next button.
+    /// Older phone apps ignore this message (unknown kind).
+    case calibration(active: Bool, canAdvance: Bool, prompt: String)
 
     enum Kind: UInt8 {
-        case motion = 1, hello = 2, button = 3, status = 4, haptic = 5
+        case motion = 1, hello = 2, button = 3, status = 4, haptic = 5, calibration = 6
     }
 
     // MARK: Encoding
@@ -59,6 +64,11 @@ public enum ControllerMessage: Equatable, Sendable {
         case let .haptic(intensity):
             w.u8(Kind.haptic.rawValue)
             w.f32(intensity)
+        case let .calibration(active, canAdvance, prompt):
+            w.u8(Kind.calibration.rawValue)
+            w.u8(active ? 1 : 0)
+            w.u8(canAdvance ? 1 : 0)
+            w.string(prompt)
         }
         return Data(w.data)
     }
@@ -90,6 +100,9 @@ public enum ControllerMessage: Equatable, Sendable {
         case .haptic:
             guard let i = r.f32(), i.isFinite else { return nil }
             return .haptic(intensity: i)
+        case .calibration:
+            guard let a = r.u8(), let c = r.u8(), let prompt = r.string() else { return nil }
+            return .calibration(active: a != 0, canAdvance: c != 0, prompt: prompt)
         }
     }
 }

@@ -59,9 +59,13 @@ struct ControllerView: View {
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 14) {
-                    bigButton("RECENTER", icon: "scope") { model.tap(.recenter) }
-                    bigButton("PAUSE", icon: "pause.fill") { model.tap(.pause) }
+                if model.calibrating {
+                    calibrationCard
+                } else {
+                    HStack(spacing: 14) {
+                        bigButton("RECENTER", icon: "scope") { model.tap(.recenter) }
+                        bigButton("PAUSE", icon: "pause.fill") { model.tap(.pause) }
+                    }
                 }
                 Text("Grip the phone like a sword hilt — any orientation works. Calibrate from the Mac (Set Up Sabers). Tap RECENTER while pointing at the screen if your saber drifts.")
                     .font(.footnote)
@@ -121,6 +125,36 @@ struct ControllerView: View {
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.07)))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.15)))
+    }
+
+    /// Shown while the Mac is calibrating: a prompt and a large NEXT button.
+    private var calibrationCard: some View {
+        VStack(spacing: 12) {
+            Text(model.calibrationPrompt.isEmpty ? "Calibrating…" : model.calibrationPrompt)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+            Button { model.tap(.next) } label: {
+                HStack(spacing: 10) {
+                    Text("NEXT").font(.system(size: 26, weight: .heavy, design: .rounded))
+                    Image(systemName: "chevron.right").font(.system(size: 24, weight: .bold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 110)
+                .foregroundStyle(.white)
+                .background(RoundedRectangle(cornerRadius: 20).fill(saberColor.opacity(model.canAdvance ? 0.45 : 0.1)))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(saberColor.opacity(model.canAdvance ? 1 : 0.3), lineWidth: 2))
+            }
+            .disabled(!model.canAdvance)
+            .opacity(model.canAdvance ? 1 : 0.5)
+            .animation(.easeOut(duration: 0.2), value: model.canAdvance)
+            if !model.canAdvance {
+                Text("Hold still until the ring on the Mac fills.")
+                    .font(.footnote).foregroundStyle(.white.opacity(0.55))
+            }
+        }
     }
 
     private func bigButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {

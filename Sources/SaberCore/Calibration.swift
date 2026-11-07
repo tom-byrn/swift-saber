@@ -132,6 +132,10 @@ public func applySensitivity(_ dir: Vec3, gain: Double) -> Vec3 {
 
 /// Step-by-step calibration driver for one sensor stream.
 /// Feed it samples; it detects when the user holds still and captures each pose.
+///
+/// After the "screen" and "ceiling" poses are captured the process waits (`isAwaitingNext`)
+/// until `advance()` is called, so the player has time to move to the next pose instead of
+/// the next hold starting while they are still in the old one.
 public final class CalibrationProcess {
     public enum Step: Equatable, Sendable {
         case pointAtScreen
@@ -145,32 +149,77 @@ public final class CalibrationProcess {
     /// 0...1 progress of the current hold.
     public private(set) var holdProgress: Double = 0
     public private(set) var result: SaberCalibration?
+    /// True once the current step's pose has been captured and the process is waiting for `advance()`.
+    public private(set) var isAwaitingNext = false
+    /// Largest rotation (degrees) across the recent sample window: how much the hand is moving.
+    public private(set) var motionDegrees: Double = 0
+    /// Angle (degrees) between the latest sample and the captured screen pose, once there is one.
+    public private(set) var degreesFromScreen: Double?
+    /// Why the hold is not counting even though the hand is steady (e.g. "Raise higher").
+    public private(set) var poseHint: String?
+    /// Latest raw sample fed in.
+    public private(set) var latest: MotionSample?
+
+    /// How far from the screen pose the ceiling pose must be.
+    public static let minimumRaiseDegrees: Double = 45
+    /// How close to the screen pose the final "back to centre" pose must be.
+    public static let maximumRecenterDegrees: Double = 30
 
     let holdDuration: Double
     let stillThresholdDegrees: Double
+    let waitsForNext: Bool
     private var window: [MotionSample] = []
     private var centerSamples: [MotionSample] = []
     private var upSamples: [MotionSample] = []
     private var stillSince: Double?
 
-    public init(holdDuration: Double = 0.9, stillThresholdDegrees: Double = 5) {
+    /// - Parameter waitsForNext: when false the process moves straight on to the next step
+    ///   after each capture (no `advance()` needed).
+    public init(holdDuration: Double = 0.9, stillThresholdDegrees: Double = 5, waitsForNext: Bool = true) {
         self.holdDuration = holdDuration
         self.stillThresholdDegrees = stillThresholdDegrees
+        self.waitsForNext = waitsForNext
     }
 
     public func restart() {
         step = .pointAtScreen
         holdProgress = 0
         result = nil
+        isAwaitingNext = false
+        motionDegrees = 0
+        degreesFromScreen = nil
+        poseHint = nil
+        latest = nil
         window.removeAll()
         centerSamples.removeAll()
         upSamples.removeAll()
         stillSince = nil
     }
 
-    /// Feeds one sample. Returns true when the step changed.
+    /// Moves on from a captured pose to the next step. Returns true if the step changed.
+    @discardableResult
+    public func advance() -> Bool {
+        guard isAwaitingNext else { return false }
+        isAwaitingNext = false
+        holdProgress = 0
+        stillSince = nil
+        window.removeAll()
+        switch step {
+        case .pointAtScreen: step = .pointUp
+        case .pointUp: step = .confirmCenter
+        case .confirmCenter: step = .done
+        case .done, .failed: break
+        }
+        return true
+    }
+
+    /// Feeds one sample. Returns true when the step (or waiting state) changed.
     @discardableResult
     public func add(_ s: MotionSample) -> Bool {
+        latest = s
+        if let c = centerSamples.last {
+            degreesFromScreen = degrees(c.attitude.angle(to: s.attitude))
+        }
         if case .done = step { return false }
         if case .failed = step { return false }
 
@@ -179,12 +228,28 @@ public final class CalibrationProcess {
 
         // Stillness: every sample in the recent window is close to the newest one.
         let maxDev = window.map { degrees($0.attitude.angle(to: s.attitude)) }.max() ?? 0
+        motionDegrees = maxDev
+        if isAwaitingNext {
+            poseHint = nil
+            return false
+        }
         let isStill = maxDev < stillThresholdDegrees && window.count >= 3
 
-        // The "up" step additionally requires being far from the centre pose.
+        // The "up" step must be far from the screen pose, and the final step close to it again
+        // (otherwise holding still at the ceiling would count as "back to the centre").
         var poseOK = true
-        if step == .pointUp, let c = centerSamples.last {
-            poseOK = degrees(c.attitude.angle(to: s.attitude)) > 45
+        poseHint = nil
+        if let fromScreen = degreesFromScreen {
+            switch step {
+            case .pointUp:
+                poseOK = fromScreen > Self.minimumRaiseDegrees
+                if !poseOK { poseHint = "Raise higher — point at the ceiling" }
+            case .confirmCenter:
+                poseOK = fromScreen < Self.maximumRecenterDegrees
+                if !poseOK { poseHint = "Point back at the screen" }
+            default:
+                break
+            }
         }
 
         if isStill && poseOK {
@@ -197,20 +262,21 @@ public final class CalibrationProcess {
         guard let since = stillSince, s.time - since >= holdDuration else { return false }
         let captured = window.filter { $0.time >= since }
         stillSince = nil
-        holdProgress = 0
         window.removeAll()
 
         switch step {
         case .pointAtScreen:
             centerSamples = captured
-            step = .pointUp
+            if let c = centerSamples.last { degreesFromScreen = degrees(c.attitude.angle(to: s.attitude)) }
+            capturedPose()
         case .pointUp:
             upSamples = captured
             switch SaberCalibration.solve(center: centerSamples, up: upSamples) {
             case .success(let cal):
                 result = cal
-                step = .confirmCenter
+                capturedPose()
             case .failure(let f):
+                holdProgress = 0
                 step = .failed(f.description)
             }
         case .confirmCenter:
@@ -218,10 +284,18 @@ public final class CalibrationProcess {
                 r.recenter(to: last.attitude)
                 result = r
             }
+            // Last pose: no need to wait.
+            holdProgress = 0
             step = .done
         case .done, .failed:
             break
         }
         return true
+    }
+
+    private func capturedPose() {
+        holdProgress = 1
+        isAwaitingNext = true
+        if !waitsForNext { advance() }
     }
 }
