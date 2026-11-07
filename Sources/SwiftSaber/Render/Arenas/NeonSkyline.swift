@@ -57,7 +57,7 @@ final class NeonSkylineStage: Stage {
         let h = SCNNode()
         for x: Float in [-1.6, 1.6] {
             h.addChildNode(Stage.segment(SIMD3(x, 0.0, -0.7), SIMD3(x, 0.0, -170), thickness: 0.05, material: mat))
-            h.addChildNode(Stage.segment(SIMD3(x, 0.0, -0.7), SIMD3(x, 0.0, -170), thickness: 0.28, material: glow))
+            h.addChildNode(Stage.segment(SIMD3(x, 0.005, -0.7), SIMD3(x, 0.005, -170), thickness: 0.16, height: 0.005, material: glow))
             // Low railing posts with a top rail.
             h.addChildNode(Stage.segment(SIMD3(x * 1.02, 0.55, -2), SIMD3(x * 1.02, 0.55, -170), thickness: 0.025, material: mat))
             var z: Float = -3

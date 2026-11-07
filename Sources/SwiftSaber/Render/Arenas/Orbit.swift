@@ -33,8 +33,8 @@ final class OrbitStage: Stage {
     private static let rimModifier = """
     #pragma body
     float ndv = saturate(dot(normalize(_surface.normal), normalize(_surface.view)));
-    float rim = pow(1.0 - ndv, 3.0);
-    _surface.emission.rgb *= rim * 2.6;
+    float rim = pow(1.0 - ndv, 2.2);
+    _surface.emission.rgb *= rim * 3.2;
     """
 
     override func build() {
@@ -68,7 +68,7 @@ final class OrbitStage: Stage {
         let h = SCNNode()
         for x: Float in [-1.45, 1.45] {
             h.addChildNode(Stage.segment(SIMD3(x, -0.01, -0.7), SIMD3(x, -0.01, -62.5), thickness: 0.05, material: mat))
-            h.addChildNode(Stage.segment(SIMD3(x, -0.01, -0.7), SIMD3(x, -0.01, -62.5), thickness: 0.26, material: glow))
+            h.addChildNode(Stage.segment(SIMD3(x, -0.005, -0.7), SIMD3(x, -0.005, -62.5), thickness: 0.16, height: 0.005, material: glow))
             var z: Float = -4
             while z > -62 {
                 let beacon = SCNSphere(radius: 0.06)
@@ -153,7 +153,8 @@ final class OrbitStage: Stage {
 
         let body = SCNSphere(radius: radius)
         body.segmentCount = 96
-        body.materials = [Materials.metal(NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.1, alpha: 1), roughness: 0.85, metalness: 0.1)]
+        // Nearly black so only the atmosphere rim and the lit crescent read.
+        body.materials = [Materials.metal(NSColor(calibratedRed: 0.012, green: 0.014, blue: 0.024, alpha: 1), roughness: 0.9, metalness: 0.05)]
         holder.addChildNode(SCNNode(geometry: body))
 
         let atmosphere = SCNSphere(radius: radius * 1.035)

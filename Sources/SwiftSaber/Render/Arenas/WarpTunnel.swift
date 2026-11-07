@@ -62,7 +62,7 @@ final class WarpTunnelStage: Stage {
         let edges = SCNNode()
         for x: Float in [-1.5, 1.5] {
             edges.addChildNode(Stage.segment(SIMD3(x, -0.03, -0.7), SIMD3(x, -0.03, -150), thickness: 0.05, material: mat))
-            edges.addChildNode(Stage.segment(SIMD3(x, -0.03, -0.7), SIMD3(x, -0.03, -150), thickness: 0.3, material: glow))
+            edges.addChildNode(Stage.segment(SIMD3(x, -0.025, -0.7), SIMD3(x, -0.025, -150), thickness: 0.16, height: 0.005, material: glow))
         }
         root.addChildNode(edges.flattenedClone())
 
