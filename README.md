@@ -26,7 +26,7 @@
 
 Swift Saber is a VR-style block-slicing rhythm game, rebuilt for a flat screen with no headset. Stand in front of your Mac with an **AirPod in one fist** and your **iPhone in the other**. Swing to slice the blocks flying at you, in the direction of their arrows and on the beat.
 
-- **Motion controllers you already own.** One saber is driven by an AirPod's motion sensors. The other is driven by your iPhone running the companion **Saber Controller** app, which streams its motion over Wi-Fi at 100 Hz.
+- **Motion controllers you already own.** One saber is driven by an AirPod's motion sensors. The other is driven by your iPhone running the companion **Swift Saber** iPhone app, which streams its motion over Wi-Fi at 100 Hz.
 - **Calibration that works with any grip.** You point at the screen, then at the ceiling, then at the screen again. The game works out how each device sits in your hand.
 - **An original soundtrack, "Prism Run".** A 128 BPM, 2½-minute electronic track that is composed and synthesized entirely in code: no samples, no licensed audio.
 - **Four hand-designed difficulties** (Easy to Expert) plus One Saber maps. Blocks follow natural swing flow, with bombs and a light show synced to the music.
@@ -46,7 +46,7 @@ Swift Saber is a VR-style block-slicing rhythm game, rebuilt for a flat screen w
   </tr>
   <tr>
     <td><img src="docs/screenshots/gameplay-intro.png" alt="Gameplay"></td>
-    <td align="center"><img src="docs/screenshots/iphone-controller.png" width="200" alt="Saber Controller iPhone app"></td>
+    <td align="center"><img src="docs/screenshots/iphone-controller.png" width="200" alt="Swift Saber iPhone app"></td>
   </tr>
 </table>
 
@@ -79,7 +79,7 @@ This builds, ad-hoc signs and launches `build/Swift Saber.app`. Use `--install` 
 
 Prefer not to build? Every push is built by GitHub Actions. Download the **SwiftSaber-app** artifact from the [latest run](https://github.com/tom-byrn/swift-saber/actions/workflows/build.yml), unzip it, and right-click › Open the first time.
 
-### 2. Install Saber Controller on your iPhone
+### 2. Install Swift Saber on your iPhone
 
 1. Open `iOSController/SaberController.xcodeproj` in Xcode.
 2. Under **SaberController › Signing & Capabilities**, pick your Team (a free Apple ID works). If the bundle ID is taken, change it to anything unique.
@@ -88,7 +88,7 @@ Prefer not to build? Every push is built by GitHub Actions. Download the **Swift
 ### 3. Get your devices ready
 
 - **AirPods:** connect them to the Mac, then turn off **Automatic Ear Detection** (System Settings › *your AirPods*). Otherwise motion stops as soon as a bud leaves your ear. Hold **one** bud.
-- **iPhone:** use the same Wi-Fi as the Mac and open Saber Controller. Allow **Local Network** access on both devices; the phone finds the game automatically.
+- **iPhone:** use the same Wi-Fi as the Mac and open the Swift Saber app. Allow **Local Network** access on both devices; the phone finds the game automatically.
 
 ### 4. Calibrate and play
 
@@ -104,7 +104,19 @@ Choose **Set Up Sabers**, then point at the screen, at the ceiling, and at the s
 | `F` | Toggle full screen |
 | `⌘K` | Set up sabers |
 
-The iPhone also has big **Recenter** and **Pause** buttons. AirPods have no compass, so their aim can slowly drift. With **Auto-recenter** on (the default), the sabers re-centre at every song start, so aim at the screen during the countdown.
+### Playing from your iPhone
+
+You never need to walk back to the Mac. Once the iPhone app connects, the phone mirrors whatever the game is showing and gives you buttons for all of it:
+
+- **Main menu:** Play, Set Up Sabers, Arena & Colors, Settings, Recenter, Quit
+- **Level select:** difficulty, one/two sabers, arena, No Fail, Start, Watch Demo
+- **Arena & Colors:** pick the arena, colour templates, edit each saber and light colour
+- **Saber setup:** start, restart and finish calibration
+- **Settings:** every option from the Mac's settings screen
+- **In a song:** a big **hold-to-pause** button. Press and hold it for about a second to pause, so a swing or a brushed thumb never pauses by accident.
+- **Paused / results:** Resume, Recenter, Restart, Play Again, Change Level, Menu
+
+The phone works as a remote in every input mode, even when it isn't one of the sabers. AirPods have no compass, so their aim can slowly drift. With **Auto-recenter** on (the default), the sabers re-centre at every song start, so aim at the screen during the countdown.
 
 ### Arena & Colors
 
@@ -148,7 +160,7 @@ Sources/
     Audio/                   AVAudioEngine playback, output-device routing (CoreAudio)
     Render/                  SceneKit arenas (Render/Arenas), blocks (clip-plane shader for real halves), sabers, effects
     UI/                      SwiftUI menus, setup, HUD, pause, results
-iOSController/             Saber Controller iPhone app (SwiftUI, Core Motion, Network)
+iOSController/             Swift Saber iPhone app (Xcode project "SaberController"; SwiftUI, Core Motion, Network)
 ```
 
 AirPods and phones report orientation, not position, so each saber pivots from a virtual shoulder. Aiming moves the blade across the block grid, and swinging through a block cuts it. Blade sweeps between frames are sub-sampled, so fast swings still connect at low sensor rates.

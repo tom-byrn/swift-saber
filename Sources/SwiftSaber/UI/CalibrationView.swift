@@ -72,7 +72,7 @@ struct CalibrationView: View {
                         }
                     }
                     let live = calibration.streams.filter { $0.live }.count
-                    Text(streamHint(live: live))
+                    Text(calibration.streamHint(mode: mode))
                         .font(Theme.body(13))
                         .foregroundStyle(.white.opacity(0.65))
                         .fixedSize(horizontal: false, vertical: true)
@@ -105,7 +105,7 @@ struct CalibrationView: View {
                           "System Settings › your AirPods › Automatic Ear Detection: Off. Otherwise motion stops when the buds leave your ears."))
         }
         if mode.usesPhone {
-            steps.append(("Open Saber Controller on your iPhone",
+            steps.append(("Open Swift Saber on your iPhone",
                           "Same Wi-Fi network as this Mac. It finds the game automatically — allow Local Network access when asked."))
         }
         switch mode {
@@ -119,22 +119,6 @@ struct CalibrationView: View {
         }
         steps.append(("Stand facing the screen", "Game audio plays through your Mac's speakers (change in Settings)."))
         return steps
-    }
-
-    private func streamHint(live: Int) -> String {
-        let hasPhone = calibration.streams.contains { $0.id == .phone && $0.live }
-        let hasPod = calibration.streams.contains { $0.id.isAirPod && $0.live }
-        switch mode {
-        case .airpodAndPhone:
-            if hasPhone && hasPod { return "AirPod and iPhone are both streaming — you'll get two sabers." }
-            if hasPhone { return "iPhone connected. Waiting for AirPods motion — move the bud around to wake it." }
-            if hasPod { return "AirPod streaming. Waiting for the iPhone — open Saber Controller on the same Wi-Fi." }
-            return "Waiting for your AirPod and iPhone…"
-        case .phone:
-            return hasPhone ? "iPhone connected." : "Open Saber Controller on your iPhone (same Wi-Fi network)."
-        default:
-            return live > 0 ? "AirPod streaming — you're ready to calibrate." : "Move the AirPod around a little to wake it up."
-        }
     }
 
     // MARK: Calibrating
@@ -158,7 +142,7 @@ struct CalibrationView: View {
                     ForEach(active) { s in
                         HoldRing(label: s.id.label, progress: s.progress,
                                  color: s.id == .left ? Theme.red : Theme.blue,
-                                 done: stepIndex(s.step) > stepIndex(calibration.currentStep))
+                                 done: CalibrationModel.stepIndex(s.step) > CalibrationModel.stepIndex(calibration.currentStep))
                     }
                 }
                 Button("Restart") { calibration.restart() }
@@ -167,16 +151,6 @@ struct CalibrationView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(width: 760)
-    }
-
-    private func stepIndex(_ s: CalibrationProcess.Step?) -> Int {
-        switch s {
-        case .pointAtScreen: return 0
-        case .pointUp: return 1
-        case .confirmCenter: return 2
-        case .done: return 3
-        default: return 0
-        }
     }
 
     // MARK: Done
@@ -241,7 +215,7 @@ struct PhoneStatusBanner: View {
         case .connected(let name):
             Label("\(name) connected", systemImage: "iphone.radiowaves.left.and.right").font(Theme.body(13)).foregroundStyle(.green)
         case .waiting:
-            Label("Looking for Saber Controller on your iPhone…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
+            Label("Looking for Swift Saber on your iPhone…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
         case .failed(let msg):
             Label("Network error: \(msg)", systemImage: "exclamationmark.triangle.fill").font(Theme.body(13)).foregroundStyle(.orange)
         case .off:

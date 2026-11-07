@@ -123,6 +123,9 @@ struct MainMenuView: View {
                 KeyHint(key: "R", label: "Recenter")
                 KeyHint(key: "F", label: "Full screen")
                 KeyHint(key: "esc", label: "Pause / Back")
+                Label("Every menu also works from the Swift Saber app on your iPhone", systemImage: "iphone")
+                    .font(Theme.body(12))
+                    .foregroundStyle(.white.opacity(0.5))
             }
             .padding(.bottom, 22)
         }
@@ -171,7 +174,7 @@ struct InputStatusView: View {
                 HStack(spacing: 8) {
                     let connected = phone.isConnected
                     Circle().fill(connected ? Color.green : Color.gray).frame(width: 7, height: 7)
-                    Text(connected ? "iPhone controller" : "iPhone: open Saber Controller").font(Theme.body(12)).foregroundStyle(.white.opacity(0.85))
+                    Text(connected ? "iPhone controller" : "iPhone: open Swift Saber").font(Theme.body(12)).foregroundStyle(.white.opacity(0.85))
                     Spacer()
                     Text(model.phoneCalibrated ? "calibrated" : "not calibrated")
                         .font(Theme.body(11))

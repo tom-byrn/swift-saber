@@ -1,8 +1,9 @@
 import Foundation
 
-/// Wire protocol between the Swift Saber Mac app and the iPhone "Saber Controller" app.
+/// Wire protocol between the Swift Saber Mac app and the Swift Saber iPhone app (the "controller").
 ///
 /// Transport: UDP datagrams, discovered via Bonjour (`_swiftsaber._udp`).
+/// Remote-control state and commands travel as JSON inside the same framing.
 /// Every datagram is: "SS" magic, protocol version, message type, then the payload
 /// (little-endian). This file is shared verbatim by both apps, so it depends only on
 /// Foundation and `Math.swift`.
@@ -28,9 +29,14 @@ public enum ControllerMessage: Equatable, Sendable {
     case status(hand: Int8, calibrated: Bool, macName: String)
     /// Mac → Phone: play a haptic tap (0...1).
     case haptic(intensity: Float)
+    /// Mac → Phone: everything the phone needs to mirror the game's current screen as a remote.
+    case remoteState(RemoteState)
+    /// Phone → Mac: a remote-control action. `id` is random per command so the Mac can drop
+    /// the duplicate copies the phone sends to survive a lost datagram.
+    case command(id: UInt32, RemoteCommand)
 
     enum Kind: UInt8 {
-        case motion = 1, hello = 2, button = 3, status = 4, haptic = 5
+        case motion = 1, hello = 2, button = 3, status = 4, haptic = 5, remoteState = 6, command = 7
     }
 
     // MARK: Encoding
@@ -59,6 +65,13 @@ public enum ControllerMessage: Equatable, Sendable {
         case let .haptic(intensity):
             w.u8(Kind.haptic.rawValue)
             w.f32(intensity)
+        case let .remoteState(state):
+            w.u8(Kind.remoteState.rawValue)
+            w.blob(Self.json(state))
+        case let .command(id, command):
+            w.u8(Kind.command.rawValue)
+            w.u32(id)
+            w.blob(Self.json(command))
         }
         return Data(w.data)
     }
@@ -90,8 +103,190 @@ public enum ControllerMessage: Equatable, Sendable {
         case .haptic:
             guard let i = r.f32(), i.isFinite else { return nil }
             return .haptic(intensity: i)
+        case .remoteState:
+            guard let blob = r.blob(), let state = try? JSONDecoder().decode(RemoteState.self, from: Data(blob)) else { return nil }
+            return .remoteState(state)
+        case .command:
+            guard let id = r.u32(), let blob = r.blob(),
+                  let command = try? JSONDecoder().decode(RemoteCommand.self, from: Data(blob)) else { return nil }
+            return .command(id: id, command)
         }
     }
+
+    private static func json<T: Encodable>(_ value: T) -> [UInt8] {
+        Array((try? JSONEncoder().encode(value)) ?? Data())
+    }
+}
+
+// MARK: - Remote control
+
+/// A snapshot of the Mac game that the phone renders as a remote control: which screen is
+/// showing and every value its controls need. Sent a few times a second and after each command.
+public struct RemoteState: Codable, Equatable, Sendable {
+    public enum Screen: String, Codable, Sendable {
+        case loading, menu, levelSelect, calibration, settings, customize, countdown, playing, paused, results
+    }
+
+    public struct Option: Codable, Equatable, Sendable, Identifiable {
+        public var id: String
+        public var title: String
+        public init(id: String, title: String) { self.id = id; self.title = title }
+    }
+
+    public struct Calibration: Codable, Equatable, Sendable {
+        public enum Phase: String, Codable, Sendable { case detecting, calibrating, done }
+        public struct Stream: Codable, Equatable, Sendable, Identifiable {
+            public var id: String
+            public var name: String
+            public var live: Bool
+            public var progress: Double
+            public var done: Bool
+            public init(id: String, name: String, live: Bool, progress: Double, done: Bool) {
+                self.id = id; self.name = name; self.live = live; self.progress = progress; self.done = done
+            }
+        }
+        public var phase: Phase = .detecting
+        public var streams: [Stream] = []
+        public var title = ""
+        public var detail = ""
+        public var failure: String?
+        public var canStart = false
+        public init() {}
+    }
+
+    public struct Settings: Codable, Equatable, Sendable {
+        public var inputMode = ""
+        public var inputModes: [Option] = []
+        public var inputDetail = ""
+        /// 0 = left, 1 = right.
+        public var primaryHand = 1
+        public var sensitivity = 1.0
+        public var airPodLatencyMs = 0.0
+        public var lenientCuts = false
+        public var autoRecenter = false
+        public var keepAirPodsAwake = false
+        public var audioOutput = ""
+        public var audioOutputs: [Option] = []
+        public var musicVolume = 1.0
+        public var sfxVolume = 1.0
+        public var audioOffsetMs = 0.0
+        public var bloom = true
+        public var cameraShake = true
+        public var noFail = false
+        public init() {}
+    }
+
+    /// Arena and colours (the Mac's "Arena & Colors" screen). Colours are "#RRGGBB".
+    public struct Look: Codable, Equatable, Sendable {
+        public struct Arena: Codable, Equatable, Sendable, Identifiable {
+            public var id: String
+            public var title: String
+            public var tagline: String
+            /// SF Symbol for the arena card.
+            public var symbol: String
+            /// The arena's own left / right light colours, for its swatch.
+            public var swatch: [String]
+            public init(id: String, title: String, tagline: String, symbol: String, swatch: [String]) {
+                self.id = id; self.title = title; self.tagline = tagline; self.symbol = symbol; self.swatch = swatch
+            }
+        }
+        public struct Preset: Codable, Equatable, Sendable, Identifiable {
+            public var id: String
+            public var name: String
+            /// Left saber, right saber, left lights, right lights.
+            public var colors: [String]
+            public init(id: String, name: String, colors: [String]) { self.id = id; self.name = name; self.colors = colors }
+        }
+        public static let slotNames = ["Left saber", "Right saber", "Left lights", "Right lights"]
+
+        public var arena = ""
+        public var arenas: [Arena] = []
+        /// Whether custom colours replace the arena's own.
+        public var customColors = false
+        /// The colours in use: left saber, right saber, left lights, right lights.
+        public var colors: [String] = []
+        public var presets: [Preset] = []
+        /// The template matching `colors`, if any.
+        public var presetID: String?
+        public init() {}
+    }
+
+    public struct Results: Codable, Equatable, Sendable {
+        public var headline = ""
+        public var rank = ""
+        public var score = 0
+        public var accuracy = 0.0
+        public var failed = false
+        public var newRecord = false
+        public var maxCombo = 0
+        public var goodCuts = 0
+        public var totalNotes = 0
+        public var misses = 0
+        public init() {}
+    }
+
+    public var screen: Screen = .loading
+    public var loadingProgress = 0.0
+    public var songTitle = ""
+    public var songInfo = ""
+    /// `Difficulty` raw values / names, in order.
+    public var difficulties: [String] = []
+    public var difficulty = 0
+    /// `PlayMode` raw value (0 two sabers, 1 one saber).
+    public var mode = 0
+    public var twoSabersAvailable = false
+    public var sabersReady = 0
+    public var anyCalibrated = false
+    /// Whether the phone drives a saber in the current input mode (otherwise it is only a remote).
+    public var phoneIsSaber = false
+    public var mapStats = ""
+    public var best: String?
+    public var demo = false
+    public var countdown = 0
+    public var countdownMessage = ""
+    public var progress = 0.0
+    public var timeText = ""
+    public var score = 0
+    public var combo = 0
+    public var calibration = Calibration()
+    public var settings = Settings()
+    public var results: Results?
+    /// Sent on the level select and Arena & Colors screens. Optional so a phone still
+    /// understands a Mac from before arenas existed.
+    public var look: Look?
+
+    public init() {}
+}
+
+public enum RemoteSettingFlag: String, Codable, Sendable {
+    case lenientCuts, autoRecenter, keepAirPodsAwake, bloom, cameraShake, noFail
+}
+
+public enum RemoteSettingValue: String, Codable, Sendable {
+    case sensitivity, airPodLatencyMs, musicVolume, sfxVolume, audioOffsetMs
+}
+
+/// Everything the Mac's menus can do, as remote commands from the phone.
+public enum RemoteCommand: Codable, Equatable, Sendable {
+    // Main menu
+    case openLevelSelect, openCalibration, openSettings, openCustomize, quitGame
+    /// Back to the main menu from level select, settings, Arena & Colors, calibration or results.
+    case back
+    // Level select
+    case selectDifficulty(Int), selectMode(Int), start, watchDemo
+    // In game
+    case pause, resume, restart, quitToMenu, recenter
+    // Calibration
+    case beginCalibration, restartCalibration, finishCalibration, calibrationPlayNow, useMouseInstead
+    // Arena & colours
+    case setArena(String), setCustomColors(Bool), applyColorPreset(String)
+    /// Slot 0...3 = left saber, right saber, left lights, right lights; hex "#RRGGBB".
+    case setColor(slot: Int, hex: String)
+    case swapColors, lightsMatchSabers, resetColors, previewLights
+    // Settings
+    case setFlag(RemoteSettingFlag, Bool)
+    case setValue(RemoteSettingValue, Double)
+    case setInputMode(String), setPrimaryHand(Int), setAudioOutput(String)
 }
 
 // MARK: - Byte helpers
@@ -108,6 +303,12 @@ struct ByteWriter {
         let utf8 = Array(s.utf8.prefix(200))
         u8(UInt8(utf8.count))
         bytes(utf8)
+    }
+    /// Up to 65 535 bytes with a 16-bit length.
+    mutating func blob(_ b: [UInt8]) {
+        let n = min(b.count, Int(UInt16.max))
+        u8(UInt8(n & 0xFF)); u8(UInt8(n >> 8))
+        bytes(Array(b.prefix(n)))
     }
 }
 
@@ -132,5 +333,12 @@ struct ByteReader {
         guard let n = u8(), index + Int(n) <= bytes.count else { return nil }
         defer { index += Int(n) }
         return String(decoding: bytes[index..<index + Int(n)], as: UTF8.self)
+    }
+    mutating func blob() -> [UInt8]? {
+        guard let lo = u8(), let hi = u8() else { return nil }
+        let n = Int(lo) | Int(hi) << 8
+        guard index + n <= bytes.count else { return nil }
+        defer { index += n }
+        return Array(bytes[index..<index + n])
     }
 }

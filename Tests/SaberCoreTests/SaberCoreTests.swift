@@ -283,6 +283,53 @@ final class ControllerProtocolTests: XCTestCase {
         XCTAssertNil(ControllerMessage.decode(bad))
     }
 
+    func testRemoteMessagesRoundTrip() {
+        var state = RemoteState()
+        state.screen = .levelSelect
+        state.songTitle = "Prism Run"
+        state.difficulties = ["Easy", "Normal", "Hard", "Expert"]
+        state.difficulty = 3
+        state.calibration.streams = [.init(id: "phone", name: "iPhone", live: true, progress: 0.4, done: false)]
+        state.settings.inputModes = [.init(id: "airpodAndPhone", title: "AirPod + iPhone")]
+        state.settings.sensitivity = 1.25
+        var results = RemoteState.Results()
+        results.rank = "SS"; results.score = 123_456
+        state.results = results
+        // A full Arena & Colors payload: every arena and template.
+        var look = RemoteState.Look()
+        look.arena = "orbit"
+        look.arenas = (0..<5).map { .init(id: "arena\($0)", title: "Neon Skyline \($0)",
+                                           tagline: "Rooftop runway above a glowing city, searchlights in the sky.",
+                                           symbol: "building.2", swatch: ["#FF2640", "#2E8CFF"]) }
+        look.colors = ["#FF2640", "#2E8CFF", "#FF2640", "#2E8CFF"]
+        look.presets = ColorPreset.all.map { p in
+            .init(id: p.id, name: p.name, colors: [p.scheme.leftSaber.hex, p.scheme.rightSaber.hex,
+                                                   p.scheme.leftLights.hex, p.scheme.rightLights.hex])
+        }
+        look.presetID = "classic"
+        state.look = look
+        let msgs: [ControllerMessage] = [
+            .remoteState(state),
+            .command(id: 7, .start),
+            .command(id: 0xDEAD_BEEF, .selectDifficulty(2)),
+            .command(id: 1, .setFlag(.noFail, true)),
+            .command(id: 2, .setValue(.musicVolume, 0.5)),
+            .command(id: 3, .setInputMode("mouse")),
+            .command(id: 4, .setColor(slot: 2, hex: "#12AB9F")),
+            .command(id: 5, .applyColorPreset("toxic")),
+        ]
+        for m in msgs {
+            XCTAssertEqual(ControllerMessage.decode(m.encoded()), m)
+        }
+        // A full state must fit comfortably in one datagram.
+        XCTAssertLessThan(ControllerMessage.remoteState(state).encoded().count, 8_000)
+    }
+
+    func testRejectsTruncatedRemoteMessage() {
+        let d = ControllerMessage.command(id: 9, .pause).encoded()
+        XCTAssertNil(ControllerMessage.decode(d.prefix(d.count - 1)))
+    }
+
     func testMotionPacketIsSmall() {
         let d = ControllerMessage.motion(sequence: 1, attitude: .identity, gravity: Vec3(0, 0, -1)).encoded()
         XCTAssertEqual(d.count, 4 + 4 + 28)

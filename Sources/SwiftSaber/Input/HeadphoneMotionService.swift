@@ -9,7 +9,7 @@ enum StreamID: Int, Codable, CaseIterable, Comparable {
     case unknown = 0
     case left = 1
     case right = 2
-    /// The iPhone "Saber Controller" app.
+    /// The Swift Saber iPhone app.
     case phone = 3
 
     var label: String {

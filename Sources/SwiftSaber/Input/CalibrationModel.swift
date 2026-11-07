@@ -133,6 +133,35 @@ final class CalibrationModel: ObservableObject {
         }
     }
 
+    /// What the setup screen says about the live motion streams.
+    func streamHint(mode: InputMode) -> String {
+        let live = streams.filter { $0.live }.count
+        let hasPhone = streams.contains { $0.id == .phone && $0.live }
+        let hasPod = streams.contains { $0.id.isAirPod && $0.live }
+        switch mode {
+        case .airpodAndPhone:
+            if hasPhone && hasPod { return "AirPod and iPhone are both streaming — you'll get two sabers." }
+            if hasPhone { return "iPhone connected. Waiting for AirPods motion — move the bud around to wake it." }
+            if hasPod { return "AirPod streaming. Waiting for the iPhone — open Swift Saber on it (same Wi-Fi)." }
+            return "Waiting for your AirPod and iPhone…"
+        case .phone:
+            return hasPhone ? "iPhone connected." : "Open Swift Saber on your iPhone (same Wi-Fi network)."
+        default:
+            return live > 0 ? "AirPod streaming — you're ready to calibrate." : "Move the AirPod around a little to wake it up."
+        }
+    }
+
+    /// Position of a calibration step, for "has this stream finished the current step" checks.
+    static func stepIndex(_ s: CalibrationProcess.Step?) -> Int {
+        switch s {
+        case .pointAtScreen: return 0
+        case .pointUp: return 1
+        case .confirmCenter: return 2
+        case .done: return 3
+        default: return 0
+        }
+    }
+
     /// Instruction text for the current step.
     static func instruction(for step: CalibrationProcess.Step, count: Int) -> (title: String, detail: String) {
         let both = count > 1
