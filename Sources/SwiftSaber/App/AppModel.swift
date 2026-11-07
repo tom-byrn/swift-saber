@@ -412,22 +412,23 @@ final class AppModel: ObservableObject {
         let main = DispatchQueue.main
         // Navigation goes through the same remote commands the iPhone sends, so a phone
         // simulator connected during the run shows each screen mirrored. CI watches the log
-        // for "phone-shot" lines and screenshots the simulator at each one.
-        func phoneShot(_ name: String, at t: Double) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + t) { NSLog("SwiftSaber phone-shot: \(name)") }
+        // for "phone-shot" lines and screenshots the simulator at each one. Markers are
+        // scheduled from each screen change (captures block the main thread for a moment,
+        // so absolute times drift).
+        func phoneShot(_ name: String, after delay: Double = 1.2) {
+            main.asyncAfter(deadline: .now() + delay) { NSLog("SwiftSaber phone-shot: \(name)") }
         }
-        phoneShot("menu", at: 2.5)
-        phoneShot("settings", at: 6.5)
-        phoneShot("calibration", at: 10.5)
-        phoneShot("levelselect", at: 14.5)
+        phoneShot("menu", after: 2.5)
         main.asyncAfter(deadline: .now() + 4) {
             capture("0-menu")
             self.handleRemote(.openSettings)
+            phoneShot("settings")
         }
         main.asyncAfter(deadline: .now() + 8) {
             capture("1-settings")
             self.handleRemote(.back)
             self.handleRemote(.openCalibration)
+            phoneShot("calibration")
         }
         main.asyncAfter(deadline: .now() + 12) {
             capture("1b-calibration")
@@ -435,10 +436,12 @@ final class AppModel: ObservableObject {
             self.handleRemote(.openLevelSelect)
             self.selectedMode = .twoSabers
             self.handleRemote(.selectDifficulty(Difficulty.expert.rawValue))
+            phoneShot("levelselect")
         }
         main.asyncAfter(deadline: .now() + 16) {
             capture("2-levelselect")
             self.handleRemote(.watchDemo)
+            phoneShot("countdown", after: 0.9)
         }
         // Countdown takes ~2.3 s; then song time ≈ wall time.
         let start = 16 + 2.4
@@ -446,27 +449,26 @@ final class AppModel: ObservableObject {
         for (t, name) in shots {
             main.asyncAfter(deadline: .now() + start + t) { capture(name) }
         }
-        phoneShot("countdown", at: 16 + 1)
-        phoneShot("playing", at: start + 30)
-        phoneShot("paused", at: start + 85)
-        phoneShot("results", at: start + 91)
+        main.asyncAfter(deadline: .now() + start + 30) { phoneShot("playing", after: 0) }
         main.asyncAfter(deadline: .now() + start + 82) {
             self.handleRemote(.pause)
+            phoneShot("paused")
         }
-        main.asyncAfter(deadline: .now() + start + 83) {
+        main.asyncAfter(deadline: .now() + start + 85) {
             capture("9-paused")
         }
-        main.asyncAfter(deadline: .now() + start + 87) {
+        main.asyncAfter(deadline: .now() + start + 88) {
             if let r = self.renderer.currentResults() {
                 self.results = r
                 self.renderer.returnToMenu()
                 self.screen = .results
             }
+            phoneShot("results", after: 1.5)
         }
-        main.asyncAfter(deadline: .now() + start + 89) {
+        main.asyncAfter(deadline: .now() + start + 91) {
             capture("10-results")
         }
-        main.asyncAfter(deadline: .now() + start + 93) {
+        main.asyncAfter(deadline: .now() + start + 95) {
             NSApp.terminate(nil)
         }
     }
