@@ -55,12 +55,12 @@ struct RemoteHeader: View {
         HStack(spacing: 10) {
             Circle().fill(Color.green).frame(width: 8, height: 8).shadow(color: .green, radius: 4)
             Text(macName)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(Theme.body(13))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
             Spacer()
             Text(role.0)
-                .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                .font(Theme.mono(11))
                 .tracking(1.5)
                 .foregroundStyle(role.1)
                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -85,7 +85,8 @@ struct NeonButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 if let icon { Image(systemName: icon).font(.system(size: 18, weight: .bold)) }
-                Text(title).font(.system(size: 18, weight: .heavy, design: .rounded)).tracking(0.5)
+                Text(title).font(Theme.heading(prominent ? 24 : 20)).tracking(1)
+                    .lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)
             .frame(height: height)
@@ -114,10 +115,7 @@ struct ScreenTitle: View {
 
     var body: some View {
         ZStack {
-            Text(text)
-                .font(.system(size: 26, weight: .black, design: .rounded)).italic()
-                .foregroundStyle(.white)
-                .shadow(color: color, radius: 10)
+            NeonText(text: text, color: color, font: Theme.display(36))
             if let back {
                 HStack {
                     Button(action: back) {
@@ -152,7 +150,7 @@ struct SectionLabel: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .font(Theme.mono(11))
             .tracking(2)
             .foregroundStyle(.white.opacity(0.5))
     }
@@ -174,7 +172,7 @@ struct RemoteSlider: View {
                 Text(title)
                 Spacer()
                 Text(format(local ?? value))
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(Theme.mono(12))
                     .foregroundStyle(.white.opacity(0.7))
             }
             Slider(value: Binding(get: { local ?? value }, set: { v in
@@ -255,7 +253,7 @@ struct MenuScreen: View {
                 NeonButton(title: "RECENTER", icon: "dot.viewfinder", color: .white) { model.send(.recenter) }
             }
             Button("Quit Game") { confirmQuit = true }
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(Theme.body(15))
                 .foregroundStyle(.white.opacity(0.5))
                 .padding(.top, 6)
                 .confirmationDialog("Quit Swift Saber on your Mac?", isPresented: $confirmQuit, titleVisibility: .visible) {
@@ -292,7 +290,7 @@ struct LevelSelectScreen: View {
                                 .overlay(Image(systemName: "music.note").font(.system(size: 26, weight: .bold)))
                                 .shadow(color: Neon.blue.opacity(0.6), radius: 8)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(state.songTitle).font(.system(size: 26, weight: .black, design: .rounded))
+                                Text(state.songTitle).font(Theme.display(34))
                                 Text(state.songInfo).font(.footnote).foregroundStyle(.white.opacity(0.6))
                             }
                         }
@@ -307,7 +305,7 @@ struct LevelSelectScreen: View {
                                     model.send(.selectDifficulty(i))
                                 } label: {
                                     Text(name)
-                                        .font(.system(size: 17, weight: .heavy, design: .rounded))
+                                        .font(Theme.heading(20))
                                         .frame(maxWidth: .infinity).frame(height: 48)
                                         .foregroundStyle(.white)
                                         .background(RoundedRectangle(cornerRadius: 12).fill(difficultyColor(i).opacity(selected ? 0.5 : 0.08)))
@@ -346,7 +344,7 @@ struct LevelSelectScreen: View {
                             Text("Best").foregroundStyle(.white.opacity(0.55))
                             Spacer()
                             Text(state.best ?? "Not played yet")
-                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                .font(Theme.mono(14))
                                 .foregroundStyle(state.best == nil ? Color.white.opacity(0.5) : Color.white)
                         }
                         .font(.subheadline)
@@ -375,7 +373,7 @@ struct LevelSelectScreen: View {
             model.send(.selectMode(mode))
         } label: {
             Text(title)
-                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .font(Theme.heading(19))
                 .frame(maxWidth: .infinity).frame(height: 46)
                 .foregroundStyle(.white)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Neon.red.opacity(selected ? 0.45 : 0.06)))
@@ -456,7 +454,7 @@ struct CalibrationScreen: View {
                 }
                 .disabled(!cal.canStart)
                 Button("Use mouse / trackpad instead") { model.send(.useMouseInstead) }
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(Theme.body(15))
                     .foregroundStyle(.white.opacity(0.55))
             }
             .padding(.horizontal, 20)
@@ -468,7 +466,7 @@ struct CalibrationScreen: View {
         VStack(spacing: 22) {
             Spacer()
             Text(cal.title)
-                .font(.system(size: 32, weight: .black, design: .rounded))
+                .font(Theme.display(40))
                 .multilineTextAlignment(.center)
             Text(cal.detail)
                 .font(.body).foregroundStyle(.white.opacity(0.75))
@@ -508,7 +506,7 @@ struct CalibrationScreen: View {
                 .font(.system(size: 64))
                 .foregroundStyle(Neon.blue)
                 .shadow(color: Neon.blue, radius: 12)
-            Text(cal.title).font(.system(size: 32, weight: .black, design: .rounded))
+            Text(cal.title).font(Theme.display(40))
             Text(cal.detail)
                 .font(.body).foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
@@ -632,14 +630,12 @@ struct CountdownScreen: View {
         VStack(spacing: 16) {
             Spacer()
             Text(state.countdownMessage.uppercased())
-                .font(.system(size: 17, weight: .heavy, design: .rounded))
-                .tracking(2)
+                .font(Theme.heading(22))
+                .tracking(3)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.85))
-            Text("\(state.countdown)")
-                .font(.system(size: 160, weight: .black, design: .rounded)).italic()
-                .foregroundStyle(.white)
-                .shadow(color: state.countdown % 2 == 0 ? Neon.red : Neon.blue, radius: 24)
+            NeonText(text: "\(state.countdown)", color: state.countdown % 2 == 0 ? Neon.red : Neon.blue,
+                     font: Theme.display(170))
                 .contentTransition(.numericText())
                 .animation(.snappy, value: state.countdown)
             Text("Point at the screen")
@@ -664,24 +660,23 @@ struct PlayingScreen: View {
             VStack(spacing: 8) {
                 ProgressView(value: state.progress).tint(.white)
                 HStack {
-                    Text(state.timeText).font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
+                    Text(state.timeText).font(Theme.mono(11)).foregroundStyle(.white.opacity(0.6))
                     Spacer()
                     if state.demo {
-                        Text("AUTOPLAY DEMO").font(.system(size: 11, weight: .heavy, design: .monospaced))
+                        Text("AUTOPLAY DEMO").font(Theme.heading(15)).tracking(2)
                             .foregroundStyle(.white.opacity(0.75))
                     }
                 }
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 0) {
-                        SectionLabel("Combo")
-                        Text("\(state.combo)").font(.system(size: 34, weight: .black, design: .rounded))
-                            .foregroundStyle(state.combo > 0 ? Neon.blue : Color.gray)
+                        Text("COMBO").font(Theme.heading(15)).tracking(3).foregroundStyle(.white.opacity(0.7))
+                        NeonText(text: "\(state.combo)", color: state.combo > 0 ? Neon.blue : Color.gray,
+                                 font: Theme.display(46))
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 0) {
-                        SectionLabel("Score")
-                        Text(formatScore(state.score)).font(.system(size: 34, weight: .black, design: .rounded))
-                            .foregroundStyle(Neon.red)
+                        Text("SCORE").font(Theme.heading(15)).tracking(3).foregroundStyle(.white.opacity(0.7))
+                        NeonText(text: formatScore(state.score), color: Neon.red, font: Theme.display(46))
                     }
                 }
             }
@@ -733,8 +728,8 @@ struct HoldToPauseButton: View {
             VStack(spacing: 10) {
                 Image(systemName: "pause.fill").font(.system(size: 54, weight: .black))
                 Text(active ? "KEEP HOLDING" : "HOLD TO PAUSE")
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    .tracking(1)
+                    .font(Theme.heading(19))
+                    .tracking(1.5)
             }
             .foregroundStyle(.white)
         }
@@ -769,11 +764,8 @@ struct PausedScreen: View {
     var body: some View {
         VStack(spacing: 14) {
             Spacer()
-            Text("PAUSED")
-                .font(.system(size: 52, weight: .black, design: .rounded)).italic()
-                .foregroundStyle(.white)
-                .shadow(color: Neon.blue, radius: 16)
-            Text(state.timeText).font(.system(size: 14, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
+            NeonText(text: "PAUSED", color: Neon.blue, font: Theme.display(64))
+            Text(state.timeText).font(Theme.mono(13)).foregroundStyle(.white.opacity(0.6))
                 .padding(.bottom, 16)
             Spacer()
             NeonButton(title: "RESUME", icon: "play.fill", color: Neon.blue, prominent: true, height: 76) {
@@ -804,17 +796,14 @@ struct ResultsScreen: View {
             if let r = state.results {
                 Spacer(minLength: 4)
                 Text(r.headline)
-                    .font(.system(size: 18, weight: .heavy, design: .rounded)).tracking(3)
+                    .font(Theme.heading(24)).tracking(4)
                     .foregroundStyle(r.failed ? Neon.red : Color.white)
-                Text(r.rank)
-                    .font(.system(size: 120, weight: .black, design: .rounded)).italic()
-                    .foregroundStyle(.white)
-                    .shadow(color: r.failed ? Neon.red : Neon.blue, radius: 22)
+                NeonText(text: r.rank, color: r.failed ? Neon.red : Neon.blue, font: Theme.display(150))
                 Text(formatScore(r.score))
-                    .font(.system(size: 40, weight: .black, design: .rounded))
+                    .font(Theme.display(56))
                 if r.newRecord {
                     Text("NEW PERSONAL BEST")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .font(Theme.mono(13))
                         .foregroundStyle(Neon.blue)
                         .shadow(color: Neon.blue, radius: 6)
                 }
@@ -845,7 +834,7 @@ struct ResultsScreen: View {
         HStack {
             Text(label).foregroundStyle(.white.opacity(0.6))
             Spacer()
-            Text(value).font(.system(size: 15, weight: .semibold, design: .monospaced))
+            Text(value).font(Theme.mono(14))
         }
         .font(.subheadline)
     }

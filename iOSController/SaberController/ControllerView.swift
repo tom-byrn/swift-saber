@@ -7,6 +7,39 @@ enum Neon {
     static let orange = Color(red: 1.0, green: 0.6, blue: 0.2)
 }
 
+/// The same type as the Mac game (Sources/SwiftSaber/UI/Theme.swift): Avenir Next Condensed
+/// for titles and buttons, rounded system text for body copy, monospaced for small labels.
+enum Theme {
+    static func display(_ size: CGFloat) -> Font {
+        .custom("AvenirNextCondensed-HeavyItalic", size: size)
+    }
+    static func heading(_ size: CGFloat) -> Font {
+        .custom("AvenirNextCondensed-DemiBold", size: size)
+    }
+    static func body(_ size: CGFloat = 15) -> Font {
+        .system(size: size, weight: .medium, design: .rounded)
+    }
+    static func mono(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .bold, design: .monospaced)
+    }
+}
+
+/// Text with a neon glow, as on the Mac.
+struct NeonText: View {
+    var text: String
+    var color: Color
+    var font: Font
+
+    var body: some View {
+        Text(text)
+            .font(font)
+            .foregroundStyle(Color.white)
+            .shadow(color: color, radius: 2)
+            .shadow(color: color, radius: 8)
+            .shadow(color: color.opacity(0.7), radius: 22)
+    }
+}
+
 struct ControllerView: View {
     @EnvironmentObject var model: ControllerModel
     @State private var flash = false
@@ -38,6 +71,7 @@ struct ControllerView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .fontDesign(.rounded)
         .animation(.easeInOut(duration: 0.2), value: model.remote?.screen)
         .onChange(of: model.lastHit) { _, _ in
             flash = true
@@ -71,7 +105,7 @@ struct ConnectionView: View {
 
             SaberHilt(color: accent, pulse: pulse)
             Text(handText)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .font(Theme.heading(26)).tracking(2)
                 .foregroundStyle(accent)
 
             Spacer(minLength: 8)
@@ -140,18 +174,30 @@ struct ConnectionView: View {
 
 // MARK: - Shared pieces
 
+/// The Mac's "SWIFT SABER" title: staggered neon words with a blade slashing through.
 struct Logo: View {
     var size: CGFloat
+    @State private var pulse = false
+
+    init(size: CGFloat) { self.size = size }
+
     var body: some View {
-        VStack(spacing: -size * 0.19) {
-            Text("SWIFT")
-                .font(.system(size: size, weight: .black, design: .rounded)).italic()
-                .foregroundStyle(.white)
-                .shadow(color: Neon.red, radius: size * 0.23)
-            Text("SABER")
-                .font(.system(size: size, weight: .black, design: .rounded)).italic()
-                .foregroundStyle(.white)
-                .shadow(color: Neon.blue, radius: size * 0.23)
+        VStack(spacing: -size * 0.18) {
+            NeonText(text: "SWIFT", color: Neon.red, font: Theme.display(size))
+            NeonText(text: "SABER", color: Neon.blue, font: Theme.display(size))
+                .offset(x: size * 0.35)
+        }
+        .offset(x: -size * 0.17)
+        .overlay(
+            Capsule()
+                .fill(LinearGradient(colors: [.clear, .white, Neon.blue, .clear], startPoint: .leading, endPoint: .trailing))
+                .frame(width: size * 4.2, height: 3)
+                .shadow(color: Neon.blue, radius: 10)
+                .rotationEffect(.degrees(-12))
+                .opacity(pulse ? 0.95 : 0.5)
+        )
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 }
@@ -177,7 +223,7 @@ struct TileButton: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: icon).font(.system(size: 28, weight: .bold))
-                Text(title).font(.system(size: 15, weight: .heavy, design: .rounded))
+                Text(title).font(Theme.heading(19)).tracking(1)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 110)
