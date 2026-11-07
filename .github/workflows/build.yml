@@ -72,7 +72,12 @@ jobs:
           done
           if kill -0 $PID 2>/dev/null; then echo "app still running, killing"; kill $PID; fi
           wait $PID; echo "exit code: $?"
-          tail -40 captures/app.log
+          tail -60 captures/app.log
+          if [ -n "$UDID" ]; then
+            # Phone-side connection log, to diagnose discovery problems.
+            xcrun simctl spawn "$UDID" log show --last 10m --style compact --predicate 'eventMessage CONTAINS "SaberRemote"' > captures/phone.log 2>&1 || true
+            tail -40 captures/phone.log
+          fi
           if [ -n "$UDID" ]; then
             for hand in right left; do
               xcrun simctl terminate "$UDID" app.swiftsaber.controller || true

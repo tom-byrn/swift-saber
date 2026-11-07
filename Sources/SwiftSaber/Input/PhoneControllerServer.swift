@@ -61,6 +61,7 @@ final class PhoneControllerServer: ObservableObject {
             let l = try NWListener(using: params)
             l.service = NWListener.Service(name: Self.macName, type: ControllerProtocol.bonjourType)
             l.stateUpdateHandler = { [weak self] state in
+                NSLog("PhoneController listener: \(String(describing: state)) port \(String(describing: l.port))")
                 DispatchQueue.main.async {
                     guard let self else { return }
                     switch state {
@@ -79,6 +80,7 @@ final class PhoneControllerServer: ObservableObject {
             listener = l
             status = .waiting
         } catch {
+            NSLog("PhoneController listener failed to start: \(error)")
             status = .failed(error.localizedDescription)
         }
         watchdog?.invalidate()
@@ -98,10 +100,12 @@ final class PhoneControllerServer: ObservableObject {
     // MARK: Connection
 
     private func accept(_ c: NWConnection) {
+        NSLog("PhoneController new connection from \(c.endpoint)")
         // One controller at a time: the newest phone wins.
         connection?.cancel()
         connection = c
         c.stateUpdateHandler = { [weak self, weak c] state in
+            NSLog("PhoneController connection: \(String(describing: state))")
             if case .failed = state, let c, self?.connection === c {
                 DispatchQueue.main.async { self?.status = .waiting }
             }
@@ -133,6 +137,7 @@ final class PhoneControllerServer: ObservableObject {
                 hub.ingest(stream: .phone, sample: MotionSample(time: now, attitude: attitude, gravity: gravity))
             }
         case let .hello(name):
+            if name != phoneName || wasIdle { NSLog("PhoneController hello from \(name)") }
             // Motion usually arrives before the first hello, so refresh the shown name.
             if name != phoneName { wasIdle = true }
             phoneName = name

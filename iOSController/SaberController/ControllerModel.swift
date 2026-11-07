@@ -137,6 +137,7 @@ final class ControllerModel: ObservableObject {
                 if case let .service(name, _, _, _) = r.endpoint { return MacEntry(id: name, endpoint: r.endpoint) }
                 return nil
             }.sorted { $0.id < $1.id }
+            NSLog("SaberRemote browse: \(entries.map(\.id))")
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.macs = entries
@@ -145,6 +146,7 @@ final class ControllerModel: ObservableObject {
                 }
             }
         }
+        b.stateUpdateHandler = { state in NSLog("SaberRemote browser: \(String(describing: state))") }
         b.start(queue: netQueue)
         browser = b
     }
@@ -154,6 +156,7 @@ final class ControllerModel: ObservableObject {
         connection?.cancel()
         let c = NWConnection(to: mac.endpoint, using: .udp)
         c.stateUpdateHandler = { [weak self, weak c] state in
+            NSLog("SaberRemote connection: \(String(describing: state))")
             guard let self, let c else { return }
             switch state {
             case .ready:
@@ -190,6 +193,7 @@ final class ControllerModel: ObservableObject {
     private func handle(_ m: ControllerMessage) {
         switch m {
         case let .status(hand, calibrated, macName):
+            if case .connected = link {} else { NSLog("SaberRemote first status from \(macName)") }
             lastStatus = Date()
             if self.hand != hand { self.hand = hand }
             if self.calibrated != calibrated { self.calibrated = calibrated }
@@ -197,6 +201,7 @@ final class ControllerModel: ObservableObject {
                 link = .connected(macName.isEmpty ? (preferredMac ?? "Mac") : macName)
             }
         case let .remoteState(state):
+            if remote == nil { NSLog("SaberRemote first remote state: \(state.screen.rawValue)") }
             lastStatus = Date()
             if Date().timeIntervalSince(lastLocalEdit) < 0.4, let current = remote {
                 // Keep what the user just set until the Mac has caught up.
