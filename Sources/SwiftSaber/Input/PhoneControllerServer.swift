@@ -69,13 +69,8 @@ final class PhoneControllerServer: ObservableObject {
             params.allowLocalEndpointReuse = true
             let l = try NWListener(using: params)
             l.service = NWListener.Service(name: Self.serviceName, type: ControllerProtocol.bonjourType)
-            l.serviceRegistrationUpdateHandler = { [weak self, weak l] change in
+            l.serviceRegistrationUpdateHandler = { change in
                 NSLog("PhoneController Bonjour: \(String(describing: change))")
-                if case .add = change {
-                    DispatchQueue.main.async {
-                        if let self, self.listener === l { self.advertised = true }
-                    }
-                }
             }
             NSLog("PhoneController advertising \"\(Self.serviceName)\" (\(Self.macName.utf8.count) bytes)")
             l.stateUpdateHandler = { [weak self] state in
@@ -85,7 +80,6 @@ final class PhoneControllerServer: ObservableObject {
                     switch state {
                     case .ready:
                         if !self.isConnected { self.status = .waiting }
-                        self.checkAdvertised(l)
                     case .failed(let e):
                         self.status = .failed(e.localizedDescription)
                         self.listener = nil
@@ -95,7 +89,6 @@ final class PhoneControllerServer: ObservableObject {
                 }
             }
             l.newConnectionHandler = { [weak self] c in self?.accept(c) }
-            advertised = false
             l.start(queue: queue)
             listener = l
             status = .waiting
@@ -105,23 +98,6 @@ final class PhoneControllerServer: ObservableObject {
         }
         watchdog?.invalidate()
         watchdog = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.checkTimeout() }
-    }
-
-    /// The listener can report ready while mDNS never confirms the Bonjour registration
-    /// (seen on busy machines); then the phone can't find the game. Retry a few times.
-    private var advertised = false
-    private var registrationRetries = 0
-
-    private func checkAdvertised(_ l: NWListener) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self, weak l] in
-            guard let self, let l, self.listener === l, !self.advertised, !self.isConnected,
-                  self.registrationRetries < 5 else { return }
-            self.registrationRetries += 1
-            NSLog("PhoneController Bonjour registration stalled; restarting listener (\(self.registrationRetries))")
-            l.cancel()
-            self.listener = nil
-            self.start()
-        }
     }
 
     func stop() {
