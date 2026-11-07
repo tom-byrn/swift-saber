@@ -6,6 +6,7 @@ enum Neon {
     static let blue = Color(red: 0.18, green: 0.55, blue: 1.0)
     static let green = Color(red: 0.2, green: 0.9, blue: 0.5)
     static let orange = Color(red: 1.0, green: 0.6, blue: 0.2)
+    static let purple = Color(red: 0.75, green: 0.4, blue: 1.0)
 }
 
 /// The same type as the Mac game (Sources/SwiftSaber/UI/Theme.swift): Avenir Next Condensed

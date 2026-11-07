@@ -29,6 +29,7 @@ extension AppModel {
         s.countdown = countdownValue
         s.countdownMessage = countdownMessage
 
+        if screen == .levelSelect || screen == .customize { s.look = remoteLook() }
         switch screen {
         case .levelSelect:
             let map = beatmap(selectedDifficulty, mode)
@@ -73,6 +74,7 @@ extension AppModel {
         case .levelSelect: return .levelSelect
         case .calibration: return .calibration
         case .settings: return .settings
+        case .customize: return .customize
         case .countdown: return .countdown
         case .playing: return .playing
         case .paused: return .paused
@@ -108,6 +110,34 @@ extension AppModel {
             c.detail = "Your sabers are live — give them a swing. Tap Recenter any time they drift."
         }
         return c
+    }
+
+    private func remoteLook() -> RemoteState.Look {
+        func hexes(_ c: SaberColorScheme) -> [String] {
+            [c.leftSaber.hex, c.rightSaber.hex, c.leftLights.hex, c.rightLights.hex]
+        }
+        var l = RemoteState.Look()
+        l.arena = settings.stage.rawValue
+        l.arenas = StageKind.allCases.map { k in
+            RemoteState.Look.Arena(id: k.rawValue, title: k.title, tagline: k.tagline, symbol: k.symbol,
+                                   swatch: [k.defaultColors.leftLights.hex, k.defaultColors.rightLights.hex])
+        }
+        l.customColors = settings.overrideColors
+        l.colors = hexes(settings.effectiveColors)
+        l.presets = ColorPreset.all.map { RemoteState.Look.Preset(id: $0.id, name: $0.name, colors: hexes($0.scheme)) }
+        l.presetID = ColorPreset.matching(settings.effectiveColors)?.id
+        return l
+    }
+
+    /// Writes a colour change as the custom scheme (switching custom colours on), like the
+    /// Mac's Arena & Colors screen.
+    private func editColors(_ change: (inout SaberColorScheme) -> Void) {
+        var s = settings
+        var c = s.effectiveColors
+        change(&c)
+        s.customColors = c
+        s.overrideColors = true
+        settings = s
     }
 
     private func remoteSettings() -> RemoteState.Settings {
@@ -157,11 +187,13 @@ extension AppModel {
                 refreshOutputDevices()
                 screen = .settings
             }
+        case .openCustomize:
+            if screen == .menu || screen == .levelSelect { screen = .customize }
         case .quitGame:
             if screen == .menu { NSApp.terminate(nil) }
         case .back:
             switch screen {
-            case .levelSelect, .settings: screen = .menu
+            case .levelSelect, .settings, .customize: screen = .menu
             case .results: quitToMenu()
             case .calibration: closeCalibration()
             default: break
@@ -209,6 +241,42 @@ extension AppModel {
                 settings.inputMode = .mouse
                 closeCalibration()
             }
+
+        case .setArena(let raw):
+            if let k = StageKind(rawValue: raw), screen == .levelSelect || screen == .customize {
+                settings.stage = k
+                audio.play(.click, volume: 0.5)
+            }
+        case .setCustomColors(let on):
+            guard screen == .customize else { break }
+            var s = settings
+            if on && !s.overrideColors && s.customColors == .classic {
+                s.customColors = s.stage.defaultColors // first time: start from what's on screen
+            }
+            s.overrideColors = on
+            settings = s
+        case .applyColorPreset(let id):
+            if screen == .customize, let preset = ColorPreset.preset(id: id) {
+                editColors { $0 = preset.scheme }
+                audio.play(.click, volume: 0.5)
+            }
+        case let .setColor(slot, hex):
+            if screen == .customize, let slot = SaberColorScheme.Slot(rawValue: slot), let color = NeonColor(hex: hex) {
+                editColors { $0[slot] = color }
+            }
+        case .swapColors:
+            if screen == .customize { editColors { $0 = $0.swapped } }
+        case .lightsMatchSabers:
+            if screen == .customize { editColors { $0.leftLights = $0.leftSaber; $0.rightLights = $0.rightSaber } }
+        case .resetColors:
+            if screen == .customize {
+                var s = settings
+                s.overrideColors = false
+                s.customColors = s.stage.defaultColors
+                settings = s
+            }
+        case .previewLights:
+            if screen == .customize { renderer.previewLights() }
 
         case let .setFlag(flag, on):
             switch flag {

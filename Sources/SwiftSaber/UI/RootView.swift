@@ -24,6 +24,7 @@ struct RootView: View {
                 case .levelSelect: LevelSelectView()
                 case .calibration: CalibrationView(calibration: model.calibration)
                 case .settings: SettingsView()
+                case .customize: CustomizeView()
                 case .countdown: CountdownView()
                 case .playing: HUDView().allowsHitTesting(false)
                 case .paused: ZStack { HUDView().allowsHitTesting(false); PauseView() }
@@ -98,6 +99,8 @@ struct MainMenuView: View {
                         .buttonStyle(NeonButtonStyle(color: Theme.blue, prominent: true, width: 280))
                     Button(model.calibratedStreams.isEmpty ? "Set Up Sabers" : "Recalibrate Sabers") { model.openCalibration() }
                         .buttonStyle(NeonButtonStyle(color: Theme.red, width: 280))
+                    Button("Arena & Colors") { model.screen = .customize }
+                        .buttonStyle(NeonButtonStyle(color: Color(red: 0.75, green: 0.4, blue: 1.0), width: 280))
                     Button("Settings") { model.screen = .settings }
                         .buttonStyle(NeonButtonStyle(color: .white, width: 280))
                     Button("Quit") { NSApp.terminate(nil) }

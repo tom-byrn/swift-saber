@@ -124,7 +124,7 @@ public enum ControllerMessage: Equatable, Sendable {
 /// showing and every value its controls need. Sent a few times a second and after each command.
 public struct RemoteState: Codable, Equatable, Sendable {
     public enum Screen: String, Codable, Sendable {
-        case loading, menu, levelSelect, calibration, settings, countdown, playing, paused, results
+        case loading, menu, levelSelect, calibration, settings, customize, countdown, playing, paused, results
     }
 
     public struct Option: Codable, Equatable, Sendable, Identifiable {
@@ -176,6 +176,41 @@ public struct RemoteState: Codable, Equatable, Sendable {
         public init() {}
     }
 
+    /// Arena and colours (the Mac's "Arena & Colors" screen). Colours are "#RRGGBB".
+    public struct Look: Codable, Equatable, Sendable {
+        public struct Arena: Codable, Equatable, Sendable, Identifiable {
+            public var id: String
+            public var title: String
+            public var tagline: String
+            /// SF Symbol for the arena card.
+            public var symbol: String
+            /// The arena's own left / right light colours, for its swatch.
+            public var swatch: [String]
+            public init(id: String, title: String, tagline: String, symbol: String, swatch: [String]) {
+                self.id = id; self.title = title; self.tagline = tagline; self.symbol = symbol; self.swatch = swatch
+            }
+        }
+        public struct Preset: Codable, Equatable, Sendable, Identifiable {
+            public var id: String
+            public var name: String
+            /// Left saber, right saber, left lights, right lights.
+            public var colors: [String]
+            public init(id: String, name: String, colors: [String]) { self.id = id; self.name = name; self.colors = colors }
+        }
+        public static let slotNames = ["Left saber", "Right saber", "Left lights", "Right lights"]
+
+        public var arena = ""
+        public var arenas: [Arena] = []
+        /// Whether custom colours replace the arena's own.
+        public var customColors = false
+        /// The colours in use: left saber, right saber, left lights, right lights.
+        public var colors: [String] = []
+        public var presets: [Preset] = []
+        /// The template matching `colors`, if any.
+        public var presetID: String?
+        public init() {}
+    }
+
     public struct Results: Codable, Equatable, Sendable {
         public var headline = ""
         public var rank = ""
@@ -216,6 +251,9 @@ public struct RemoteState: Codable, Equatable, Sendable {
     public var calibration = Calibration()
     public var settings = Settings()
     public var results: Results?
+    /// Sent on the level select and Arena & Colors screens. Optional so a phone still
+    /// understands a Mac from before arenas existed.
+    public var look: Look?
 
     public init() {}
 }
@@ -231,8 +269,8 @@ public enum RemoteSettingValue: String, Codable, Sendable {
 /// Everything the Mac's menus can do, as remote commands from the phone.
 public enum RemoteCommand: Codable, Equatable, Sendable {
     // Main menu
-    case openLevelSelect, openCalibration, openSettings, quitGame
-    /// Back to the main menu from level select, settings, calibration or results.
+    case openLevelSelect, openCalibration, openSettings, openCustomize, quitGame
+    /// Back to the main menu from level select, settings, Arena & Colors, calibration or results.
     case back
     // Level select
     case selectDifficulty(Int), selectMode(Int), start, watchDemo
@@ -240,6 +278,11 @@ public enum RemoteCommand: Codable, Equatable, Sendable {
     case pause, resume, restart, quitToMenu, recenter
     // Calibration
     case beginCalibration, restartCalibration, finishCalibration, calibrationPlayNow, useMouseInstead
+    // Arena & colours
+    case setArena(String), setCustomColors(Bool), applyColorPreset(String)
+    /// Slot 0...3 = left saber, right saber, left lights, right lights; hex "#RRGGBB".
+    case setColor(slot: Int, hex: String)
+    case swapColors, lightsMatchSabers, resetColors, previewLights
     // Settings
     case setFlag(RemoteSettingFlag, Bool)
     case setValue(RemoteSettingValue, Double)

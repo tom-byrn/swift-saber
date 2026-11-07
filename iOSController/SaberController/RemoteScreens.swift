@@ -19,6 +19,7 @@ struct RemoteRoot: View {
                 case .levelSelect: LevelSelectScreen(state: state)
                 case .calibration: CalibrationScreen(state: state)
                 case .settings: SettingsScreen(state: state)
+                case .customize: CustomizeScreen(state: state)
                 case .countdown: CountdownScreen(state: state, accent: accent)
                 case .playing: PlayingScreen(state: state, accent: accent)
                 case .paused: PausedScreen(state: state)
@@ -248,6 +249,9 @@ struct MenuScreen: View {
             NeonButton(title: state.anyCalibrated ? "RECALIBRATE SABERS" : "SET UP SABERS", icon: "scope", color: Neon.red) {
                 model.send(.openCalibration)
             }
+            NeonButton(title: "ARENA & COLORS", icon: "paintpalette.fill", color: Neon.purple) {
+                model.send(.openCustomize)
+            }
             HStack(spacing: 12) {
                 NeonButton(title: "SETTINGS", icon: "gearshape.fill", color: .white) { model.send(.openSettings) }
                 NeonButton(title: "RECENTER", icon: "dot.viewfinder", color: .white) { model.send(.recenter) }
@@ -328,6 +332,32 @@ struct LevelSelectScreen: View {
                                  : "Only one saber has input, so you'll play the One Saber map.")
                                 .font(Theme.body(13)).foregroundStyle(Neon.orange)
                                 .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if let look = state.look {
+                            SectionLabel("Arena")
+                            HStack {
+                                Menu {
+                                    Picker("Arena", selection: Binding(get: { look.arena },
+                                                                       set: { model.send(.setArena($0)) })) {
+                                        ForEach(look.arenas) { Text($0.title).tag($0.id) }
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(look.arenas.first { $0.id == look.arena }?.title ?? look.arena)
+                                            .font(Theme.heading(19)).tracking(1).textCase(.uppercase)
+                                        Image(systemName: "chevron.up.chevron.down").font(.system(size: 12, weight: .bold))
+                                    }
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 14).frame(height: 42)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(Neon.purple.opacity(0.18)))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Neon.purple.opacity(0.8), lineWidth: 1.5))
+                                }
+                                Spacer()
+                                Button("Colors…") { model.send(.openCustomize) }
+                                    .font(Theme.body(15))
+                                    .foregroundStyle(Neon.blue)
+                            }
                         }
 
                         Toggle("No Fail", isOn: Binding(get: { state.settings.noFail },
@@ -837,5 +867,200 @@ struct ResultsScreen: View {
             Text(value).font(Theme.mono(14))
         }
         .font(Theme.body(15))
+    }
+}
+
+// MARK: - Arena & colours
+
+extension Color {
+    /// "#RRGGBB" → Color (white if malformed).
+    init(hex: String) {
+        let h = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        let v = UInt32(h, radix: 16) ?? 0xFFFFFF
+        self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+
+    var hexString: String {
+        var r: CGFloat = 1, g: CGFloat = 1, b: CGFloat = 1, a: CGFloat = 1
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func c(_ x: CGFloat) -> Int { Int((min(max(x, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", c(r), c(g), c(b))
+    }
+}
+
+/// The Mac's "Arena & Colors" screen: pick the arena and the saber / light colours.
+struct CustomizeScreen: View {
+    @EnvironmentObject var model: ControllerModel
+    var state: RemoteState
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScreenTitle(text: "ARENA & COLORS", color: Neon.blue) { model.send(.back) }
+                .padding(.horizontal, 20)
+            if let look = state.look {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        arenas(look)
+                        colors(look)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                }
+                NeonButton(title: "PREVIEW LIGHTS", icon: "sparkles", color: .white) { model.send(.previewLights) }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+            } else {
+                Spacer()
+            }
+        }
+    }
+
+    private func arenas(_ look: RemoteState.Look) -> some View {
+        Card {
+            SectionLabel("Arena")
+            ForEach(look.arenas) { arena in
+                let selected = arena.id == look.arena
+                Button {
+                    model.send(.setArena(arena.id))
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9)
+                                .fill(LinearGradient(colors: arena.swatch.map { Color(hex: $0).opacity(0.6) },
+                                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                            Image(systemName: arena.symbol).font(.system(size: 20, weight: .semibold))
+                        }
+                        .frame(width: 48, height: 48)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(arena.title.uppercased()).font(Theme.heading(19)).tracking(1)
+                            Text(arena.tagline).font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(selected ? 0.12 : 0.03)))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(selected ? Neon.blue : Color.white.opacity(0.1), lineWidth: selected ? 2 : 1))
+                }
+                .buttonStyle(PressScale())
+            }
+        }
+    }
+
+    private func colors(_ look: RemoteState.Look) -> some View {
+        Card {
+            Toggle(isOn: Binding(get: { look.customColors }, set: { model.send(.setCustomColors($0)) })) {
+                SectionLabel("Custom colors")
+            }
+            .tint(Neon.blue)
+            Text(look.customColors
+                 ? "Your colours are used in every arena."
+                 : "Using the arena's own colours. Pick a template or change a colour to customise.")
+                .font(Theme.body(12)).foregroundStyle(.white.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+
+            SectionLabel("Templates")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                ForEach(look.presets) { preset in
+                    PresetTile(preset: preset, selected: preset.id == look.presetID) {
+                        model.send(.applyColorPreset(preset.id))
+                    }
+                }
+            }
+
+            SabersPreview(colors: look.colors)
+                .padding(.vertical, 4)
+
+            ForEach(Array(look.colors.enumerated()), id: \.offset) { i, hex in
+                HStack(spacing: 12) {
+                    Circle().fill(Color(hex: hex)).frame(width: 22, height: 22)
+                        .shadow(color: Color(hex: hex), radius: 5)
+                        .overlay(Circle().stroke(Color.white.opacity(0.6), lineWidth: 1))
+                    Text(i < RemoteState.Look.slotNames.count ? RemoteState.Look.slotNames[i] : "Colour \(i + 1)")
+                        .font(Theme.body(15))
+                    Spacer()
+                    Text(hex).font(Theme.mono(12)).foregroundStyle(.white.opacity(0.6))
+                    ColorPicker("", selection: Binding(get: { Color(hex: hex) },
+                                                       set: { model.sendThrottled(.setColor(slot: i, hex: $0.hexString)) }),
+                                supportsOpacity: false)
+                        .labelsHidden()
+                }
+            }
+
+            HStack(spacing: 8) {
+                smallButton("Swap L / R") { model.send(.swapColors) }
+                smallButton("Lights = Sabers") { model.send(.lightsMatchSabers) }
+                smallButton("Reset") { model.send(.resetColors) }
+            }
+        }
+    }
+
+    private func smallButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.body(13))
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity).frame(height: 38)
+                .foregroundStyle(.white)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.08)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.2)))
+        }
+        .buttonStyle(PressScale())
+    }
+}
+
+private struct PresetTile: View {
+    var preset: RemoteState.Look.Preset
+    var selected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                HStack(spacing: 0) {
+                    ForEach(Array(preset.colors.prefix(2).enumerated()), id: \.offset) { _, hex in
+                        Rectangle().fill(Color(hex: hex))
+                    }
+                }
+                .frame(height: 22)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                HStack(spacing: 0) {
+                    ForEach(Array(preset.colors.dropFirst(2).enumerated()), id: \.offset) { _, hex in
+                        Rectangle().fill(Color(hex: hex))
+                    }
+                }
+                .frame(height: 4)
+                .clipShape(Capsule())
+                .padding(.horizontal, 8)
+                Text(preset.name)
+                    .font(Theme.body(12))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .foregroundStyle(.white.opacity(selected ? 1 : 0.7))
+            }
+            .padding(7)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(selected ? 0.14 : 0.04)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(selected ? 0.9 : 0.12), lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(PressScale())
+    }
+}
+
+/// Two glowing blades in the chosen saber colours.
+private struct SabersPreview: View {
+    var colors: [String]
+    var body: some View {
+        HStack(spacing: 16) {
+            ForEach(Array(colors.prefix(2).enumerated()), id: \.offset) { _, hex in
+                let c = Color(hex: hex)
+                Capsule()
+                    .fill(LinearGradient(colors: [.white, c], startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 8)
+                    .shadow(color: c, radius: 6)
+                    .shadow(color: c, radius: 12)
+            }
+        }
     }
 }

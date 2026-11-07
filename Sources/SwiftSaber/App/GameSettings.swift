@@ -59,8 +59,51 @@ struct GameSettings: Codable, Equatable {
     var keepAirPodsAwake = true
     var bloom = true
     var cameraShake = true
+    /// The environment levels are played in.
+    var stage: StageKind = .prismHall
+    /// When false the arena's own colours are used; when true `customColors` replaces them.
+    var overrideColors = false
+    var customColors: SaberColorScheme = .classic
+
+    /// The colours actually used in game.
+    var effectiveColors: SaberColorScheme { overrideColors ? customColors : stage.defaultColors }
 
     static let storageKey = "SwiftSaber.settings.v1"
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case inputMode, primaryHand, swapAirPods, sensitivity, audioOutput, musicVolume, sfxVolume
+        case audioOffsetMs, airPodLatencyMs, noFail, lenientCuts, autoRecenter, keepAirPodsAwake
+        case bloom, cameraShake, stage, overrideColors, customColors
+    }
+
+    /// Every key is optional so settings saved by older versions keep loading (missing or
+    /// unknown values fall back to their defaults instead of discarding everything).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func read<T: Decodable>(_ key: CodingKeys, _ target: inout T) {
+            if let v = try? c.decodeIfPresent(T.self, forKey: key) { target = v }
+        }
+        read(.inputMode, &inputMode)
+        read(.primaryHand, &primaryHand)
+        read(.swapAirPods, &swapAirPods)
+        read(.sensitivity, &sensitivity)
+        read(.audioOutput, &audioOutput)
+        read(.musicVolume, &musicVolume)
+        read(.sfxVolume, &sfxVolume)
+        read(.audioOffsetMs, &audioOffsetMs)
+        read(.airPodLatencyMs, &airPodLatencyMs)
+        read(.noFail, &noFail)
+        read(.lenientCuts, &lenientCuts)
+        read(.autoRecenter, &autoRecenter)
+        read(.keepAirPodsAwake, &keepAirPodsAwake)
+        read(.bloom, &bloom)
+        read(.cameraShake, &cameraShake)
+        read(.stage, &stage)
+        read(.overrideColors, &overrideColors)
+        read(.customColors, &customColors)
+    }
 
     static func load() -> GameSettings {
         guard let data = UserDefaults.standard.data(forKey: storageKey),

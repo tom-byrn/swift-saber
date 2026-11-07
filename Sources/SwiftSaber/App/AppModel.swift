@@ -9,6 +9,7 @@ enum Screen: Equatable {
     case levelSelect
     case calibration
     case settings
+    case customize
     case countdown
     case playing
     case paused
@@ -59,8 +60,9 @@ final class AppModel: ObservableObject {
     var demoCaptureDirectory: URL?
 
     init() {
-        settings = GameSettings.load()
-        renderer = GameRenderer(input: hub, audio: audio)
+        let loaded = GameSettings.load()
+        settings = loaded
+        renderer = GameRenderer(input: hub, audio: audio, stage: loaded.stage, colors: loaded.effectiveColors)
         motion = HeadphoneMotionService(hub: hub)
         phone = PhoneControllerServer(hub: hub)
 
@@ -126,6 +128,7 @@ final class AppModel: ObservableObject {
         audio.userOffset = settings.audioOffsetMs / 1000
         audio.setVolumes(music: settings.musicVolume, sfx: settings.sfxVolume)
         renderer.setVisualOptions(bloom: settings.bloom, cameraShake: settings.cameraShake)
+        renderer.setLook(stage: settings.stage, colors: settings.effectiveColors)
         if previous?.audioOutput != settings.audioOutput {
             audio.applyOutput(choice: settings.audioOutput)
         }
@@ -427,10 +430,40 @@ final class AppModel: ObservableObject {
         main.asyncAfter(deadline: .now() + 8) {
             capture("1-settings")
             self.handleRemote(.back)
+            self.handleRemote(.openCustomize)
+            phoneShot("customize", after: 1.5)
+        }
+        // Tour every arena (with its own colours, then with a custom preset) before the demo.
+        let originalLook = (self.settings.stage, self.settings.overrideColors, self.settings.customColors)
+        var tourTime = 11.0
+        for (i, kind) in StageKind.allCases.enumerated() {
+            main.asyncAfter(deadline: .now() + tourTime) {
+                self.settings.overrideColors = false
+                self.handleRemote(.setArena(kind.rawValue))
+            }
+            main.asyncAfter(deadline: .now() + tourTime + 1.2) {
+                capture("arena-\(i)-\(kind.rawValue)")
+                self.handleRemote(.previewLights)
+            }
+            main.asyncAfter(deadline: .now() + tourTime + 1.6) { capture("arena-\(i)-\(kind.rawValue)-flash") }
+            tourTime += 2.2
+        }
+        main.asyncAfter(deadline: .now() + tourTime) {
+            self.handleRemote(.applyColorPreset("toxic"))
+            phoneShot("customcolors", after: 0.8)
+        }
+        main.asyncAfter(deadline: .now() + tourTime + 1) { capture("arena-custom-colors") }
+        tourTime += 2.5
+        main.asyncAfter(deadline: .now() + tourTime) {
+            self.settings.stage = originalLook.0
+            self.settings.overrideColors = originalLook.1
+            self.settings.customColors = originalLook.2
+            self.handleRemote(.back)
             self.handleRemote(.openCalibration)
             phoneShot("calibration")
         }
-        main.asyncAfter(deadline: .now() + 12) {
+        let t0 = tourTime
+        main.asyncAfter(deadline: .now() + t0 + 4) {
             capture("1b-calibration")
             self.handleRemote(.back)
             self.handleRemote(.openLevelSelect)
@@ -438,13 +471,13 @@ final class AppModel: ObservableObject {
             self.handleRemote(.selectDifficulty(Difficulty.expert.rawValue))
             phoneShot("levelselect")
         }
-        main.asyncAfter(deadline: .now() + 16) {
+        main.asyncAfter(deadline: .now() + t0 + 8) {
             capture("2-levelselect")
             self.handleRemote(.watchDemo)
             phoneShot("countdown", after: 0.9)
         }
         // Countdown takes ~2.3 s; then song time ≈ wall time.
-        let start = 16 + 2.4
+        let start = t0 + 8 + 2.4
         let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
         for (t, name) in shots {
             main.asyncAfter(deadline: .now() + start + t) { capture(name) }
@@ -498,7 +531,7 @@ final class AppModel: ObservableObject {
             switch screen {
             case .playing: pauseGame()
             case .paused: resumeGame()
-            case .levelSelect, .settings, .results: screen = .menu
+            case .levelSelect, .settings, .customize, .results: screen = .menu
             case .calibration: closeCalibration()
             default: return false
             }

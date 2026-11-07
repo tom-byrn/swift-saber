@@ -210,6 +210,7 @@ final class ControllerModel: ObservableObject {
                 merged.settings = current.settings
                 merged.difficulty = current.difficulty
                 merged.mode = current.mode
+                if merged.look != nil { merged.look = current.look ?? merged.look }
                 if merged != remote { remote = merged }
             } else if state != remote {
                 remote = state
@@ -272,6 +273,27 @@ final class ControllerModel: ObservableObject {
         }
     }
 
+    /// For continuous controls (colour pickers): updates the screen at once but sends at most
+    /// ~12 times a second, always ending with the latest value.
+    func sendThrottled(_ command: RemoteCommand) {
+        applyLocally(command)
+        pendingThrottled = command
+        guard throttleWork == nil else { return }
+        let elapsed = Date().timeIntervalSince(lastThrottledSend)
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let c = self.pendingThrottled else { return }
+            self.pendingThrottled = nil
+            self.throttleWork = nil
+            self.lastThrottledSend = Date()
+            self.send(c, haptic: false)
+        }
+        throttleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, 0.08 - elapsed), execute: work)
+    }
+    private var pendingThrottled: RemoteCommand?
+    private var throttleWork: DispatchWorkItem?
+    private var lastThrottledSend = Date.distantPast
+
     /// Strong buzz when the hold-to-pause completes.
     func confirmHaptic() {
         heavy.impactOccurred(intensity: 1)
@@ -299,6 +321,22 @@ final class ControllerModel: ObservableObject {
             case .musicVolume: s.settings.musicVolume = v
             case .sfxVolume: s.settings.sfxVolume = v
             case .audioOffsetMs: s.settings.audioOffsetMs = v
+            }
+        case .setArena(let a): s.look?.arena = a
+        case .setCustomColors(let on): s.look?.customColors = on
+        case let .setColor(slot, hex):
+            if var look = s.look, look.colors.indices.contains(slot) {
+                look.colors[slot] = hex
+                look.customColors = true
+                look.presetID = look.presets.first { $0.colors == look.colors }?.id
+                s.look = look
+            }
+        case .applyColorPreset(let id):
+            if var look = s.look, let preset = look.presets.first(where: { $0.id == id }) {
+                look.colors = preset.colors
+                look.customColors = true
+                look.presetID = id
+                s.look = look
             }
         case .setInputMode(let m): s.settings.inputMode = m
         case .setPrimaryHand(let h): s.settings.primaryHand = h
@@ -368,6 +406,27 @@ final class ControllerModel: ObservableObject {
         r.totalNotes = 412
         r.misses = 9
         s.results = r
+        var look = RemoteState.Look()
+        look.arena = "neonSkyline"
+        look.arenas = [
+            .init(id: "prismHall", title: "Prism Hall", tagline: "A mirrored runway through spinning prism rings and laser fans.", symbol: "octagon", swatch: ["#FF2640", "#2E8CFF"]),
+            .init(id: "sunsetDrive", title: "Sunset Drive", tagline: "Race down a neon grid towards a striped retro sun.", symbol: "sun.horizon", swatch: ["#FF3CC8", "#28E1FF"]),
+            .init(id: "warpTunnel", title: "Warp Tunnel", tagline: "A twisting tunnel of light frames streaking through hyperspace.", symbol: "tornado", swatch: ["#FF5A14", "#3CC8FF"]),
+            .init(id: "neonSkyline", title: "Neon Skyline", tagline: "Rooftop runway above a glowing city, searchlights in the sky.", symbol: "building.2", swatch: ["#FF7828", "#B43CFF"]),
+            .init(id: "orbit", title: "Orbit", tagline: "A platform in deep space, circled by giant gyroscope rings.", symbol: "globe", swatch: ["#FFB428", "#14DCC8"]),
+        ]
+        look.customColors = true
+        look.colors = ["#FF3CC8", "#28E1FF", "#FF3CC8", "#28E1FF"]
+        look.presets = [
+            .init(id: "classic", name: "Classic", colors: ["#FF2940", "#2E8CFF", "#FF2940", "#2E8CFF"]),
+            .init(id: "synthwave", name: "Synthwave", colors: ["#FF3CC8", "#28E1FF", "#FF3CC8", "#28E1FF"]),
+            .init(id: "fireice", name: "Fire & Ice", colors: ["#FF5A14", "#3CC8FF", "#FF5A14", "#3CC8FF"]),
+            .init(id: "toxic", name: "Toxic", colors: ["#7CFF32", "#B43CFF", "#7CFF32", "#B43CFF"]),
+            .init(id: "sunset", name: "Sunset", colors: ["#FF7828", "#B43CFF", "#FF7828", "#B43CFF"]),
+            .init(id: "goldteal", name: "Gold & Teal", colors: ["#FFB428", "#14DCC8", "#FFB428", "#14DCC8"]),
+        ]
+        look.presetID = "synthwave"
+        s.look = look
         return s
     }
 }
