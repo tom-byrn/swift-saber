@@ -293,8 +293,7 @@ final class ControllerProtocolTests: XCTestCase {
             .button(.recenter),
             .button(.pause),
             .button(.next),
-            .calibration(active: true, canAdvance: true, prompt: "Now point at the ceiling"),
-            .calibration(active: false, canAdvance: false, prompt: ""),
+            .command(id: 42, .calibrationNext),
             .status(hand: 1, calibrated: true, macName: "MacBook Pro"),
             .status(hand: -1, calibrated: false, macName: ""),
             .haptic(intensity: 0.75),
@@ -321,8 +320,106 @@ final class ControllerProtocolTests: XCTestCase {
         XCTAssertNil(ControllerMessage.decode(bad))
     }
 
+    func testRemoteMessagesRoundTrip() {
+        var state = RemoteState()
+        state.screen = .levelSelect
+        state.songTitle = "Prism Run"
+        state.difficulties = ["Easy", "Normal", "Hard", "Expert"]
+        state.difficulty = 3
+        state.calibration.streams = [.init(id: "phone", name: "iPhone", live: true, progress: 0.4, done: false)]
+        state.settings.inputModes = [.init(id: "airpodAndPhone", title: "AirPod + iPhone")]
+        state.settings.sensitivity = 1.25
+        var results = RemoteState.Results()
+        results.rank = "SS"; results.score = 123_456
+        state.results = results
+        // A full Arena & Colors payload: every arena and template.
+        var look = RemoteState.Look()
+        look.arena = "orbit"
+        look.arenas = (0..<5).map { .init(id: "arena\($0)", title: "Neon Skyline \($0)",
+                                           tagline: "Rooftop runway above a glowing city, searchlights in the sky.",
+                                           symbol: "building.2", swatch: ["#FF2640", "#2E8CFF"]) }
+        look.colors = ["#FF2640", "#2E8CFF", "#FF2640", "#2E8CFF"]
+        look.presets = ColorPreset.all.map { p in
+            .init(id: p.id, name: p.name, colors: [p.scheme.leftSaber.hex, p.scheme.rightSaber.hex,
+                                                   p.scheme.leftLights.hex, p.scheme.rightLights.hex])
+        }
+        look.presetID = "classic"
+        state.look = look
+        let msgs: [ControllerMessage] = [
+            .remoteState(state),
+            .command(id: 7, .start),
+            .command(id: 0xDEAD_BEEF, .selectDifficulty(2)),
+            .command(id: 1, .setFlag(.noFail, true)),
+            .command(id: 2, .setValue(.musicVolume, 0.5)),
+            .command(id: 3, .setInputMode("mouse")),
+            .command(id: 4, .setColor(slot: 2, hex: "#12AB9F")),
+            .command(id: 5, .applyColorPreset("toxic")),
+        ]
+        for m in msgs {
+            XCTAssertEqual(ControllerMessage.decode(m.encoded()), m)
+        }
+        // A full state must fit comfortably in one datagram.
+        XCTAssertLessThan(ControllerMessage.remoteState(state).encoded().count, 8_000)
+    }
+
+    func testRejectsTruncatedRemoteMessage() {
+        let d = ControllerMessage.command(id: 9, .pause).encoded()
+        XCTAssertNil(ControllerMessage.decode(d.prefix(d.count - 1)))
+    }
+
     func testMotionPacketIsSmall() {
         let d = ControllerMessage.motion(sequence: 1, attitude: .identity, gravity: Vec3(0, 0, -1)).encoded()
         XCTAssertEqual(d.count, 4 + 4 + 28)
+    }
+}
+
+final class ColorSchemeTests: XCTestCase {
+    func testHexRoundTrip() {
+        let c = NeonColor(hex: "#1A7FFF")
+        XCTAssertEqual(c?.r255, 0x1A)
+        XCTAssertEqual(c?.g255, 0x7F)
+        XCTAssertEqual(c?.b255, 0xFF)
+        XCTAssertEqual(c?.hex, "#1A7FFF")
+        XCTAssertEqual(NeonColor(hex: "f0a")?.hex, "#FF00AA")
+        XCTAssertEqual(NeonColor(hex: " 00ff00 ")?.hex, "#00FF00")
+        XCTAssertNil(NeonColor(hex: "#12345"))
+        XCTAssertNil(NeonColor(hex: "zzzzzz"))
+    }
+
+    func testComponentsAreClamped() {
+        let c = NeonColor(1.5, -0.2, 0.5)
+        XCTAssertEqual(c.r, 1)
+        XCTAssertEqual(c.g, 0)
+        XCTAssertEqual(c.b, 0.5)
+    }
+
+    func testSlotsAndSwap() {
+        var s = SaberColorScheme.classic
+        s[.rightLights] = .white
+        XCTAssertEqual(s.rightLights, .white)
+        let w = s.swapped
+        XCTAssertEqual(w.leftSaber, s.rightSaber)
+        XCTAssertEqual(w.leftLights, .white)
+        XCTAssertEqual(w.swapped, s)
+    }
+
+    func testSchemeCodableRoundTrip() throws {
+        let s = ColorPreset.all[3].scheme
+        let data = try JSONEncoder().encode(s)
+        XCTAssertEqual(try JSONDecoder().decode(SaberColorScheme.self, from: data), s)
+    }
+
+    func testPresetsAreUniqueAndReadable() {
+        XCTAssertEqual(Set(ColorPreset.all.map(\.id)).count, ColorPreset.all.count)
+        XCTAssertEqual(ColorPreset.preset(id: "classic")?.scheme, .classic)
+        for p in ColorPreset.all {
+            XCTAssertEqual(ColorPreset.matching(p.scheme)?.id, p.id)
+            // The two sabers must be easy to tell apart.
+            let a = p.scheme.leftSaber, b = p.scheme.rightSaber
+            let distance = abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b)
+            XCTAssertGreaterThan(distance, 0.5, p.name)
+            // Blocks are dark versions of the saber colours.
+            XCTAssertLessThan(a.deepened.luminance, a.luminance + 1e-9, p.name)
+        }
     }
 }

@@ -2,14 +2,18 @@ import AppKit
 
 /// Draws the app icon in code: a dark tile with a glowing block and two crossed blades.
 enum IconRenderer {
-    static func draw(in rect: CGRect, context ctx: CGContext) {
-        let s = rect.width
+    /// `fullBleed` draws just the tile, filling the whole square (iOS masks the corners itself).
+    static func draw(in rect: CGRect, context ctx: CGContext, fullBleed: Bool = false) {
+        // Every size is relative to the macOS canvas, whose tile is inset by 9 % on each side,
+        // so the full-bleed iPhone icon is exactly the Mac icon's tile.
+        let s = fullBleed ? rect.width / 0.82 : rect.width
         let inset = s * 0.09
-        let tile = rect.insetBy(dx: inset, dy: inset)
+        let tile = fullBleed ? rect : rect.insetBy(dx: inset, dy: inset)
         let radius = tile.width * 0.22
 
         // Background tile
-        let tilePath = CGPath(roundedRect: tile, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let tilePath = fullBleed ? CGPath(rect: tile, transform: nil)
+            : CGPath(roundedRect: tile, cornerWidth: radius, cornerHeight: radius, transform: nil)
         ctx.saveGState()
         ctx.addPath(tilePath)
         ctx.clip()
@@ -81,20 +85,22 @@ enum IconRenderer {
         ctx.restoreGState()
 
         // Rim
-        ctx.addPath(tilePath)
-        ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.12))
-        ctx.setLineWidth(s * 0.006)
-        ctx.strokePath()
+        if !fullBleed {
+            ctx.addPath(tilePath)
+            ctx.setStrokeColor(CGColor(gray: 1, alpha: 0.12))
+            ctx.setLineWidth(s * 0.006)
+            ctx.strokePath()
+        }
     }
 
-    static func bitmap(pixels: Int) -> NSBitmapImageRep? {
+    static func bitmap(pixels: Int, fullBleed: Bool = false) -> NSBitmapImageRep? {
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let gc = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = gc
-        draw(in: CGRect(x: 0, y: 0, width: pixels, height: pixels), context: gc.cgContext)
+        draw(in: CGRect(x: 0, y: 0, width: pixels, height: pixels), context: gc.cgContext, fullBleed: fullBleed)
         gc.flushGraphics()
         NSGraphicsContext.restoreGraphicsState()
         return rep
@@ -104,6 +110,21 @@ enum IconRenderer {
         let img = NSImage(size: NSSize(width: size, height: size))
         if let rep = bitmap(pixels: size) { img.addRepresentation(rep) }
         return img
+    }
+
+    /// The iPhone app's 1024 px icon: the same artwork, full bleed and opaque.
+    static func exportIOSIcon(to url: URL) {
+        guard let rep = bitmap(pixels: 1024, fullBleed: true), let image = rep.cgImage,
+              let ctx = CGContext(data: nil, width: 1024, height: 1024, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return }
+        ctx.setFillColor(CGColor(red: 0.01, green: 0.02, blue: 0.08, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: 1024, height: 1024))
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: 1024, height: 1024))
+        guard let opaque = ctx.makeImage(),
+              let png = NSBitmapImageRep(cgImage: opaque).representation(using: .png, properties: [:]) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? png.write(to: url)
     }
 
     static func exportIconset(to dir: URL) {

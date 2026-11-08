@@ -21,11 +21,11 @@ enum InputMode: String, Codable, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .airpodAndPhone:
-            return "Two sabers: an AirPod in your main hand, your iPhone (running Saber Controller) in the other. The phone buzzes on every cut."
+            return "Two sabers: an AirPod in your main hand, your iPhone (running Swift Saber) in the other. The phone buzzes on every cut."
         case .airpods:
             return "One saber. AirPods stream motion from one bud at a time, so hold a single bud."
         case .phone:
-            return "One saber driven by your iPhone running the Saber Controller app."
+            return "One saber driven by your iPhone running the Swift Saber app."
         case .airpodAndMouse:
             return "An AirPod drives your main hand, the mouse or trackpad drives the other saber."
         case .mouse:
@@ -37,12 +37,40 @@ enum InputMode: String, Codable, CaseIterable, Identifiable {
     var usesMotionDevices: Bool { usesAirPods || usesPhone }
 }
 
+/// How the AirPod saber is held.
+enum AirPodGrip: String, Codable, CaseIterable, Identifiable {
+    /// One bud in the fist, read through Core Motion's headphone motion.
+    case bud
+    /// Both buds in the closed charging case, which becomes the hilt (AirPods Pro 2 / 3).
+    case closedCase
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .bud: return "AirPod in hand"
+        case .closedCase: return "Closed case"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .bud:
+            return "Hold one bud in your fist. Works with any AirPods that support spatial audio."
+        case .closedCase:
+            return "Keep both buds in the closed charging case and hold the case like a hilt. AirPods Pro 2 or 3; no ear detection to switch off."
+        }
+    }
+}
+
 struct GameSettings: Codable, Equatable {
     var inputMode: InputMode = .airpodAndPhone
     /// Hand that holds the AirPod (or the only device). The iPhone / mouse takes the other hand.
     var primaryHand: Hand = .right
     /// Swap which bud drives which saber in two-saber mode.
     var swapAirPods = false
+    /// Whether the AirPod saber is a bud in the hand or the closed case.
+    var airPodGrip: AirPodGrip = .bud
+    /// For AirPods whose accelerometer reports gravity the other way round: flips the case saber end for end.
+    var invertCaseGravity = false
     /// Multiplies AirPod rotation (1 = natural).
     var sensitivity: Double = 1.15
     /// "auto" (Mac speakers), "system" (system default) or a CoreAudio device UID.
@@ -59,8 +87,53 @@ struct GameSettings: Codable, Equatable {
     var keepAirPodsAwake = true
     var bloom = true
     var cameraShake = true
+    /// The environment levels are played in.
+    var stage: StageKind = .prismHall
+    /// When false the arena's own colours are used; when true `customColors` replaces them.
+    var overrideColors = false
+    var customColors: SaberColorScheme = .classic
+
+    /// The colours actually used in game.
+    var effectiveColors: SaberColorScheme { overrideColors ? customColors : stage.defaultColors }
 
     static let storageKey = "SwiftSaber.settings.v1"
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case inputMode, primaryHand, swapAirPods, airPodGrip, invertCaseGravity, sensitivity, audioOutput, musicVolume, sfxVolume
+        case audioOffsetMs, airPodLatencyMs, noFail, lenientCuts, autoRecenter, keepAirPodsAwake
+        case bloom, cameraShake, stage, overrideColors, customColors
+    }
+
+    /// Every key is optional so settings saved by older versions keep loading (missing or
+    /// unknown values fall back to their defaults instead of discarding everything).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func read<T: Decodable>(_ key: CodingKeys, _ target: inout T) {
+            if let v = try? c.decodeIfPresent(T.self, forKey: key) { target = v }
+        }
+        read(.inputMode, &inputMode)
+        read(.primaryHand, &primaryHand)
+        read(.swapAirPods, &swapAirPods)
+        read(.airPodGrip, &airPodGrip)
+        read(.invertCaseGravity, &invertCaseGravity)
+        read(.sensitivity, &sensitivity)
+        read(.audioOutput, &audioOutput)
+        read(.musicVolume, &musicVolume)
+        read(.sfxVolume, &sfxVolume)
+        read(.audioOffsetMs, &audioOffsetMs)
+        read(.airPodLatencyMs, &airPodLatencyMs)
+        read(.noFail, &noFail)
+        read(.lenientCuts, &lenientCuts)
+        read(.autoRecenter, &autoRecenter)
+        read(.keepAirPodsAwake, &keepAirPodsAwake)
+        read(.bloom, &bloom)
+        read(.cameraShake, &cameraShake)
+        read(.stage, &stage)
+        read(.overrideColors, &overrideColors)
+        read(.customColors, &customColors)
+    }
 
     static func load() -> GameSettings {
         guard let data = UserDefaults.standard.data(forKey: storageKey),

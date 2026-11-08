@@ -23,6 +23,14 @@ cp "$BIN_DIR/SwiftSaber" "$APP/Contents/MacOS/SwiftSaber"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
+echo "▸ Compiling AirPods case helpers…"
+# Closed-case motion (from AirPointer, MIT): see Helpers/AirPodsCase/README.md.
+clang -O2 -fobjc-arc -Wall -Wextra -Werror -framework Foundation -framework CoreBluetooth -framework IOBluetooth \
+  "$ROOT/Helpers/AirPodsCase/ClosedCaseMotion.m" -o "$APP/Contents/Resources/ClosedCaseMotion.bin"
+xcrun swiftc -swift-version 5 -O "$ROOT/Helpers/AirPodsCase/ClosedCaseRestore.swift" \
+  -o "$APP/Contents/Resources/ClosedCaseRestore.bin" -framework Foundation -framework CoreBluetooth -framework IOBluetooth
+"$APP/Contents/Resources/ClosedCaseMotion.bin" --self-test >/dev/null || { echo "ClosedCaseMotion self-test failed"; exit 1; }
+
 echo "▸ Rendering app icon…"
 ICONSET="$BUILD_DIR/AppIcon.iconset"
 rm -rf "$ICONSET"
@@ -32,6 +40,9 @@ fi
 rm -rf "$ICONSET"
 
 echo "▸ Signing (ad-hoc)…"
+for helper in ClosedCaseMotion ClosedCaseRestore; do
+  codesign --force --sign - --identifier "app.swiftsaber.$helper" "$APP/Contents/Resources/$helper.bin"
+done
 codesign --force --deep --sign - "$APP"
 
 echo "✓ Built: $APP"

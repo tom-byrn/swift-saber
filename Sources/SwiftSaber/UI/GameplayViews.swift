@@ -165,7 +165,7 @@ struct PauseView: View {
                         .buttonStyle(NeonButtonStyle(color: Theme.red, width: 260))
                     Button("Quit to Menu") { model.quitToMenu() }
                         .buttonStyle(NeonButtonStyle(color: .gray, width: 260))
-                    Text("Point both sabers at the screen centre, then press R to recenter.")
+                    Text("Point both sabers at the screen centre, then press R (or Recenter on your iPhone).")
                         .font(Theme.body(12)).foregroundStyle(.white.opacity(0.55))
                         .padding(.top, 6)
                 }

@@ -24,6 +24,7 @@ targets.append(
             .linkedFramework("AVFoundation"),
             .linkedFramework("CoreAudio"),
             .linkedFramework("AudioToolbox"),
+            .linkedFramework("CoreBluetooth"),
         ]
     )
 )

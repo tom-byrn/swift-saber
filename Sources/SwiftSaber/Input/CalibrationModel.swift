@@ -214,26 +214,42 @@ final class CalibrationModel: ObservableObject {
         return (degrees(yaw), degrees(pitch), degrees(roll))
     }
 
-    /// One-line prompt for the iPhone controller.
-    var phonePrompt: String {
-        switch phase {
-        case .detecting: return "Press Start Calibration on the Mac"
-        case .done: return "Calibrated"
-        case .calibrating:
-            if canAdvance {
-                switch currentStep {
-                case .pointAtScreen: return "Got it! Tap NEXT, then point at the ceiling"
-                case .pointUp: return "Got it! Tap NEXT, then point back at the screen"
-                default: return "Tap NEXT"
-                }
-            }
-            return Self.instruction(for: currentStep, count: 1).title
+    /// What the setup screen says about the live motion streams.
+    func streamHint(mode: InputMode, grip: AirPodGrip = .bud) -> String {
+        let live = streams.filter { $0.live }.count
+        let hasPhone = streams.contains { $0.id == .phone && $0.live }
+        let hasPod = streams.contains { $0.id.isAirPod && $0.live }
+        let pod = grip == .closedCase ? "AirPods case" : "AirPod"
+        let wake = grip == .closedCase ? "connect the case (left)" : "move the bud around to wake it"
+        switch mode {
+        case .airpodAndPhone:
+            if hasPhone && hasPod { return "\(pod) and iPhone are both streaming — you'll get two sabers." }
+            if hasPhone { return "iPhone connected. Waiting for \(pod) motion — \(wake)." }
+            if hasPod { return "\(pod) streaming. Waiting for the iPhone — open Swift Saber on it (same Wi-Fi)." }
+            return "Waiting for your \(pod) and iPhone…"
+        case .phone:
+            return hasPhone ? "iPhone connected." : "Open Swift Saber on your iPhone (same Wi-Fi network)."
+        default:
+            if live > 0 { return "\(pod) streaming — you're ready to calibrate." }
+            return grip == .closedCase ? "Connect the case to start its motion stream." : "Move the AirPod around a little to wake it up."
+        }
+    }
+
+    /// Position of a calibration step, for "has this stream finished the current step" checks.
+    static func stepIndex(_ s: CalibrationProcess.Step?) -> Int {
+        switch s {
+        case .pointAtScreen: return 0
+        case .pointUp: return 1
+        case .confirmCenter: return 2
+        case .done: return 3
+        default: return 0
         }
     }
 
     /// Instruction text for the current step.
-    static func instruction(for step: CalibrationProcess.Step, count: Int, awaitingNext: Bool = false) -> (title: String, detail: String) {
+    static func instruction(for step: CalibrationProcess.Step, count: Int, grip: AirPodGrip = .bud, awaitingNext: Bool = false) -> (title: String, detail: String) {
         let both = count > 1
+        let thing = grip == .closedCase ? "case" : "AirPod"
         if awaitingNext {
             switch step {
             case .pointAtScreen:
@@ -249,8 +265,8 @@ final class CalibrationModel: ObservableObject {
         switch step {
         case .pointAtScreen:
             return ("Point at the screen",
-                    both ? "Hold an AirPod in each fist, arms relaxed in front of you, and point both fists at the centre of the screen. Hold still."
-                         : "Hold the AirPod in your fist and point it at the centre of the screen like a sword hilt. Hold still.")
+                    both ? "Hold a device in each fist, arms relaxed in front of you, and point both fists at the centre of the screen. Hold still."
+                         : "Hold the \(thing) in your fist and point it at the centre of the screen like a sword hilt. Hold still.")
         case .pointUp:
             return ("Now point at the ceiling",
                     both ? "Raise both fists so they point straight up, without twisting your wrists. Hold still."

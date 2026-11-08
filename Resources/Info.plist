@@ -33,11 +33,13 @@
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Swift Saber connects to the Saber Controller app on your iPhone so you can use the phone as a second saber.</string>
+	<string>Swift Saber connects to the Swift Saber app on your iPhone so you can use the phone as a second saber.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_swiftsaber._udp</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Swift Saber connects to your paired AirPods so it can read their motion while they sit in the closed case, turning the case into a saber.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Swift Saber reads your AirPods' motion sensors so you can hold them like sabers and slice blocks.</string>
 </dict>

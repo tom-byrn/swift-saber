@@ -11,6 +11,11 @@ enum Launcher {
             IconRenderer.exportIconset(to: URL(fileURLWithPath: args[i + 1]))
             exit(0)
         }
+        if let i = args.firstIndex(of: "--export-ios-icon"), i + 1 < args.count {
+            // Used by CI to (re)generate the iPhone app's icon from the same artwork.
+            IconRenderer.exportIOSIcon(to: URL(fileURLWithPath: args[i + 1]))
+            exit(0)
+        }
         if let i = args.firstIndex(of: "--demo-capture"), i + 1 < args.count {
             DemoOptions.captureDirectory = URL(fileURLWithPath: args[i + 1])
         }
@@ -52,6 +57,22 @@ struct SwiftSaberApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Motion controls generate no keyboard or mouse input, so macOS would think the player is
+    /// idle and dim (then sleep) the display mid-song. Hold the display awake while the game is
+    /// frontmost; let it sleep normally once the player switches away.
+    private var displayAwake: NSObjectProtocol?
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard displayAwake == nil else { return }
+        displayAwake = ProcessInfo.processInfo.beginActivity(options: [.idleDisplaySleepDisabled, .userInitiated],
+                                                             reason: "Playing Swift Saber with motion controls")
+    }
+
+    func applicationDidResignActive(_ notification: Notification) {
+        if let displayAwake { ProcessInfo.processInfo.endActivity(displayAwake) }
+        displayAwake = nil
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)

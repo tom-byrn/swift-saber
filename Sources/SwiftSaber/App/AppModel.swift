@@ -9,6 +9,7 @@ enum Screen: Equatable {
     case levelSelect
     case calibration
     case settings
+    case customize
     case countdown
     case playing
     case paused
@@ -45,6 +46,8 @@ final class AppModel: ObservableObject {
     let renderer: GameRenderer
     let motion: HeadphoneMotionService
     let phone: PhoneControllerServer
+    /// The closed AirPods case as a saber (used when `settings.airPodGrip == .closedCase`).
+    let airPodsCase: AirPodsCaseSession
     lazy var calibration = CalibrationModel(hub: hub)
 
     private var monitors: [Any] = []
@@ -61,10 +64,14 @@ final class AppModel: ObservableObject {
     var demoCaptureDirectory: URL?
 
     init() {
-        settings = GameSettings.load()
-        renderer = GameRenderer(input: hub, audio: audio)
+        let loaded = GameSettings.load()
+        settings = loaded
+        renderer = GameRenderer(input: hub, audio: audio, stage: loaded.stage, colors: loaded.effectiveColors)
         motion = HeadphoneMotionService(hub: hub)
         phone = PhoneControllerServer(hub: hub)
+        airPodsCase = AirPodsCaseSession(hub: hub)
+        // Put back any audio devices a session moved off the AirPods before a crash or force quit.
+        CaseAudioGuard.shared.restoreAfterCrash()
 
         renderer.onHUD = { [weak self] snap in
             guard let self, self.screen == .playing || self.screen == .paused else { return }
@@ -77,13 +84,29 @@ final class AppModel: ObservableObject {
             if case .stream(.phone)? = hub.currentAssignment()[hand] { phone.sendHaptic(strength) }
         }
         phone.onButton = { [weak self] b in self?.phoneButton(b) }
+        phone.onCommand = { [weak self] c in self?.handleRemote(c) }
         audio.onConfigurationChange = { [weak self] in self?.audioConfigurationChanged() }
 
         calibration.onStepCompleted = { [weak self] in self?.audio.play(.calibrationStep, volume: 0.8) }
+        airPodsCase.onStageAdvanced = { [weak self] in
+            guard let self else { return }
+            self.audio.play(.calibrationStep, volume: 0.6)
+            if self.airPodsCase.stage == .ready { self.caseBecameReady() }
+        }
+        airPodsCase.onNewFrame = { [weak self] in
+            // Each connection has its own orientation frame, so the case needs calibrating again.
+            guard let self else { return }
+            self.hub.setCalibration(nil, for: .airPodCase)
+            self.updateAssignment()
+        }
+        airPodsCase.onEnded = { [weak self] message in self?.airPodsCaseEnded(message) }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.airPodsCase.shutdown()
+        }
         calibration.onFinished = { [weak self] results in self?.calibrationFinished(results) }
         calibration.onPhaseChanged = { [weak self] _ in
             self?.updateSaberVisibility()
-            self?.sendPhoneStatus()
+            self?.sendPhoneState()
         }
 
         applySettings(previous: nil)
@@ -93,7 +116,9 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             let infos = self.hub.streamInfos()
             if infos != self.streamInfos { self.streamInfos = infos }
-            if self.settings.inputMode.usesPhone { self.sendPhoneStatus() }
+            // The phone is always a remote, even when it isn't one of the sabers.
+            self.sendPhoneStatus()
+            self.sendPhoneState()
         }
         loadMusic()
     }
@@ -129,21 +154,29 @@ final class AppModel: ObservableObject {
         audio.userOffset = settings.audioOffsetMs / 1000
         audio.setVolumes(music: settings.musicVolume, sfx: settings.sfxVolume)
         renderer.setVisualOptions(bloom: settings.bloom, cameraShake: settings.cameraShake)
+        renderer.setLook(stage: settings.stage, colors: settings.effectiveColors)
         if previous?.audioOutput != settings.audioOutput {
             audio.applyOutput(choice: settings.audioOutput)
         }
-        if settings.inputMode.usesAirPods {
+        if usesHeadphoneMotion {
             motion.start()
         } else {
             motion.stop()
         }
-        if settings.inputMode.usesPhone {
-            phone.start()
-        } else {
-            phone.stop()
+        airPodsCase.setInvertGravity(settings.invertCaseGravity)
+        if !usesAirPodsCase && airPodsCase.isActive { airPodsCase.disconnect() }
+        if let previous, previous.invertCaseGravity != settings.invertCaseGravity, hub.calibration(for: .airPodCase) != nil {
+            hub.setCalibration(nil, for: .airPodCase)
+            showToast("Case saber flipped — calibrate it again in Set Up Sabers")
         }
-        if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode {
-            audio.setKeepAirPodsAwake(settings.keepAirPodsAwake && settings.inputMode.usesAirPods)
+        // Always listen for the phone so it can drive the menus in every input mode;
+        // its motion only reaches the sabers when the input mode uses it.
+        phone.forwardsMotion = settings.inputMode.usesPhone
+        phone.start()
+        if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode
+            || previous?.airPodGrip != settings.airPodGrip {
+            // A case session keeps its own silent stream going and holds sound off the AirPods.
+            audio.setKeepAirPodsAwake(settings.keepAirPodsAwake && usesHeadphoneMotion)
         }
         updateAssignment()
     }
@@ -158,9 +191,36 @@ final class AppModel: ObservableObject {
         audio.applyOutput(choice: settings.audioOutput)
         audio.setVolumes(music: settings.musicVolume, sfx: settings.sfxVolume)
         refreshOutputDevices()
-        if settings.inputMode.usesAirPods {
+        if usesHeadphoneMotion {
             audio.setKeepAirPodsAwake(false)
             audio.setKeepAirPodsAwake(settings.keepAirPodsAwake)
+        }
+    }
+
+    /// AirPod motion through Core Motion (a bud in the hand).
+    var usesHeadphoneMotion: Bool { settings.inputMode.usesAirPods && settings.airPodGrip == .bud }
+    /// AirPod motion from the closed charging case.
+    var usesAirPodsCase: Bool { settings.inputMode.usesAirPods && settings.airPodGrip == .closedCase }
+
+    /// Guided setup: once the case streams, go straight into calibration if nothing else is awaited.
+    private func caseBecameReady() {
+        guard screen == .calibration, calibration.phase == .detecting else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, self.screen == .calibration, self.calibration.phase == .detecting,
+                  self.airPodsCase.stage == .ready else { return }
+            let live = self.hub.liveStreams()
+            guard live.contains(.airPodCase), !self.settings.inputMode.usesPhone || live.contains(.phone) else { return }
+            self.calibration.begin()
+        }
+    }
+
+    private func airPodsCaseEnded(_ message: String?) {
+        hub.setCalibration(nil, for: .airPodCase)
+        updateAssignment()
+        guard let message else { return }
+        if screen == .playing { pauseGame() } else if screen == .countdown && !isDemo { quitToMenu() }
+        if screen != .calibration {
+            showToast(airPodsCase.lostContact ? "AirPods case went quiet — open the lid, then reconnect in Set Up Sabers" : message)
         }
     }
 
@@ -223,7 +283,7 @@ final class AppModel: ObservableObject {
 
     func openCalibration() {
         if !settings.inputMode.usesMotionDevices { settings.inputMode = .airpodAndPhone }
-        if settings.inputMode.usesAirPods { motion.start() }
+        if usesHeadphoneMotion { motion.start() }
         if settings.inputMode.usesPhone { phone.start() }
         calibration.restart()
         calibration.activate()
@@ -244,7 +304,7 @@ final class AppModel: ObservableObject {
     /// Next button (on screen, keyboard or iPhone) during calibration.
     func calibrationNext() {
         calibration.next()
-        sendPhoneStatus()
+        sendPhoneState()
     }
 
     private func calibrationFinished(_ results: [StreamID: SaberCalibration]) {
@@ -282,9 +342,6 @@ final class AppModel: ObservableObject {
     private func sendPhoneStatus() {
         let hand = hub.currentAssignment().first { $0.value == .stream(.phone) }?.key
         phone.sendStatus(hand: hand, calibrated: phoneCalibrated)
-        let calibrating = screen == .calibration && calibration.phase == .calibrating
-        phone.sendCalibration(active: calibrating, canAdvance: calibrating && calibration.canAdvance,
-                              prompt: screen == .calibration ? calibration.phonePrompt : "")
     }
 
     func recenter() {
@@ -437,44 +494,95 @@ final class AppModel: ObservableObject {
             NSLog("SwiftSaber capture: \(name)")
         }
         let main = DispatchQueue.main
-        main.asyncAfter(deadline: .now() + 2) {
+        // Navigation goes through the same remote commands the iPhone sends, so a phone
+        // simulator connected during the run shows each screen mirrored. CI watches the log
+        // for "phone-shot" lines and screenshots the simulator at each one. Markers are
+        // scheduled from each screen change (captures block the main thread for a moment,
+        // so absolute times drift).
+        func phoneShot(_ name: String, after delay: Double = 1.2) {
+            main.asyncAfter(deadline: .now() + delay) { NSLog("SwiftSaber phone-shot: \(name)") }
+        }
+        phoneShot("menu", after: 2.5)
+        main.asyncAfter(deadline: .now() + 4) {
             capture("0-menu")
-            self.screen = .settings
+            self.handleRemote(.openSettings)
+            phoneShot("settings")
         }
-        main.asyncAfter(deadline: .now() + 3) {
+        main.asyncAfter(deadline: .now() + 8) {
             capture("1-settings")
-            self.openCalibration()
+            self.handleRemote(.back)
+            self.handleRemote(.openCustomize)
+            phoneShot("customize", after: 1.5)
         }
-        main.asyncAfter(deadline: .now() + 4.5) {
+        // Tour every arena (with its own colours, then with a custom preset) before the demo.
+        let originalLook = (self.settings.stage, self.settings.overrideColors, self.settings.customColors)
+        var tourTime = 11.0
+        for (i, kind) in StageKind.allCases.enumerated() {
+            main.asyncAfter(deadline: .now() + tourTime) {
+                self.settings.overrideColors = false
+                self.handleRemote(.setArena(kind.rawValue))
+            }
+            main.asyncAfter(deadline: .now() + tourTime + 1.2) {
+                capture("arena-\(i)-\(kind.rawValue)")
+                self.handleRemote(.previewLights)
+            }
+            main.asyncAfter(deadline: .now() + tourTime + 1.6) { capture("arena-\(i)-\(kind.rawValue)-flash") }
+            tourTime += 2.2
+        }
+        main.asyncAfter(deadline: .now() + tourTime) {
+            self.handleRemote(.applyColorPreset("toxic"))
+            phoneShot("customcolors", after: 0.8)
+        }
+        main.asyncAfter(deadline: .now() + tourTime + 1) { capture("arena-custom-colors") }
+        tourTime += 2.5
+        main.asyncAfter(deadline: .now() + tourTime) {
+            self.settings.stage = originalLook.0
+            self.settings.overrideColors = originalLook.1
+            self.settings.customColors = originalLook.2
+            self.handleRemote(.back)
+            self.handleRemote(.openCalibration)
+            phoneShot("calibration")
+        }
+        let t0 = tourTime
+        main.asyncAfter(deadline: .now() + t0 + 4) {
             capture("1b-calibration")
-            self.closeCalibration()
-            self.selectedDifficulty = .expert
+            self.handleRemote(.back)
+            self.handleRemote(.openLevelSelect)
             self.selectedMode = .twoSabers
-            self.screen = .levelSelect
+            self.handleRemote(.selectDifficulty(Difficulty.expert.rawValue))
+            phoneShot("levelselect")
         }
-        main.asyncAfter(deadline: .now() + 6) {
+        main.asyncAfter(deadline: .now() + t0 + 8) {
             capture("2-levelselect")
-            self.startDemo()
+            self.handleRemote(.watchDemo)
+            phoneShot("countdown", after: 0.9)
         }
         // Countdown takes ~2.3 s; then song time ≈ wall time.
-        let start = 6 + 2.4
+        let start = t0 + 8 + 2.4
         let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
         for (t, name) in shots {
             main.asyncAfter(deadline: .now() + start + t) { capture(name) }
         }
+        main.asyncAfter(deadline: .now() + start + 30) { phoneShot("playing", after: 0) }
         main.asyncAfter(deadline: .now() + start + 82) {
-            self.pauseGame()
+            self.handleRemote(.pause)
+            phoneShot("paused")
         }
-        main.asyncAfter(deadline: .now() + start + 83) {
+        main.asyncAfter(deadline: .now() + start + 85) {
             capture("9-paused")
+        }
+        main.asyncAfter(deadline: .now() + start + 88) {
             if let r = self.renderer.currentResults() {
                 self.results = r
                 self.renderer.returnToMenu()
                 self.screen = .results
             }
+            phoneShot("results", after: 1.5)
         }
-        main.asyncAfter(deadline: .now() + start + 85) {
+        main.asyncAfter(deadline: .now() + start + 91) {
             capture("10-results")
+        }
+        main.asyncAfter(deadline: .now() + start + 95) {
             NSApp.terminate(nil)
         }
     }
@@ -504,7 +612,7 @@ final class AppModel: ObservableObject {
             switch screen {
             case .playing: pauseGame()
             case .paused: resumeGame()
-            case .levelSelect, .settings, .results: screen = .menu
+            case .levelSelect, .settings, .customize, .results: screen = .menu
             case .calibration: closeCalibration()
             default: return false
             }
