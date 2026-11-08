@@ -38,6 +38,8 @@
 	<array>
 		<string>_swiftsaber._udp</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Swift Saber connects to your paired AirPods so it can read their motion while they sit in the closed case, turning the case into a saber.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Swift Saber reads your AirPods' motion sensors so you can hold them like sabers and slice blocks.</string>
 </dict>

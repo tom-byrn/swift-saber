@@ -30,6 +30,18 @@ struct SettingsView: View {
                         Text(model.settings.inputMode.detail).font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
 
+                        if model.settings.inputMode.usesAirPods {
+                            Picker("Hold the AirPods as", selection: binding(\.airPodGrip)) {
+                                ForEach(AirPodGrip.allCases) { Text($0.title).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            Text(model.settings.airPodGrip.detail).font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
+                                .fixedSize(horizontal: false, vertical: true)
+                            if model.settings.airPodGrip == .closedCase {
+                                Toggle("Flip case saber (if it points back at you)", isOn: binding(\.invertCaseGravity))
+                            }
+                        }
+
                         Picker("AirPod hand", selection: binding(\.primaryHand)) {
                             Text("Left").tag(Hand.left)
                             Text("Right").tag(Hand.right)
@@ -42,7 +54,9 @@ struct SettingsView: View {
                                   format: { "\(Int($0)) ms" })
                         Toggle("Lenient cut angles", isOn: binding(\.lenientCuts))
                         Toggle("Auto-recenter when a song starts", isOn: binding(\.autoRecenter))
-                        Toggle("Keep AirPods awake (silent stream)", isOn: binding(\.keepAirPodsAwake))
+                        if model.settings.airPodGrip == .bud {
+                            Toggle("Keep AirPods awake (silent stream)", isOn: binding(\.keepAirPodsAwake))
+                        }
                     }
                 }
                 .frame(width: 470)

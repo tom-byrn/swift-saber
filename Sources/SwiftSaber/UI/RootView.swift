@@ -145,7 +145,8 @@ struct InputStatusView: View {
                 Text(model.settings.inputMode.title).font(Theme.body(13)).foregroundStyle(.white.opacity(0.85))
             }
             if model.settings.inputMode.usesAirPods {
-                switch motion.status {
+                let caseGrip = model.settings.airPodGrip == .closedCase
+                switch caseGrip ? .waitingForAirPods : motion.status {
                 case .denied:
                     Label("Motion access denied — enable it in System Settings › Privacy & Security", systemImage: "exclamationmark.triangle.fill")
                         .font(Theme.body(12)).foregroundStyle(.orange)
@@ -153,11 +154,12 @@ struct InputStatusView: View {
                     Label("Headphone motion isn't available on this Mac", systemImage: "exclamationmark.triangle.fill")
                         .font(Theme.body(12)).foregroundStyle(.orange)
                 default:
-                    if !model.streamInfos.contains(where: { $0.id.isAirPod }) {
-                        Label("Waiting for AirPods motion…", systemImage: "airpodspro")
+                    if !model.streamInfos.contains(where: { $0.id.isAirPod && ($0.id == .airPodCase) == caseGrip }) {
+                        Label(caseGrip ? "AirPods case not connected — open Set Up Sabers" : "Waiting for AirPods motion…",
+                              systemImage: caseGrip ? "airpodspro.chargingcase.wireless" : "airpodspro")
                             .font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
                     }
-                    ForEach(model.streamInfos.filter { $0.id.isAirPod }) { s in
+                    ForEach(model.streamInfos.filter { $0.id.isAirPod && ($0.id == .airPodCase) == caseGrip }) { s in
                         HStack(spacing: 8) {
                             Circle().fill(s.isLive ? Color.green : Color.gray).frame(width: 7, height: 7)
                                 .shadow(color: s.isLive ? .green : .clear, radius: 4)

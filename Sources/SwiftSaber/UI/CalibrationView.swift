@@ -32,8 +32,22 @@ struct CalibrationView: View {
         HStack(alignment: .top, spacing: 26) {
             Panel {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("BEFORE YOU START").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
+                    if mode.usesAirPods {
+                        Picker("Hold the AirPods as", selection: Binding(get: { model.settings.airPodGrip },
+                                                                        set: { model.settings.airPodGrip = $0 })) {
+                            ForEach(AirPodGrip.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .font(Theme.body(13))
+                    }
+                    if usesCase {
+                        CaseSetupPanel(session: model.airPodsCase, hand: model.settings.primaryHand.name.lowercased())
+                        if mode.usesPhone { Divider().overlay(Color.white.opacity(0.15)) }
+                    }
                     let steps = checklist
+                    if !steps.isEmpty && !usesCase {
+                        Text("BEFORE YOU START").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
+                    }
                     ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
                         ChecklistRow(n: i + 1, title: step.0, detail: step.1)
                     }
@@ -49,17 +63,18 @@ struct CalibrationView: View {
             Panel {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("MOTION STREAMS").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
-                    if mode.usesAirPods { MotionStatusBanner(motion: model.motion) }
+                    if mode.usesAirPods && !usesCase { MotionStatusBanner(motion: model.motion) }
                     if mode.usesPhone { PhoneStatusBanner(phone: model.phone) }
                     if calibration.streams.isEmpty {
                         HStack(spacing: 10) {
                             ProgressView().controlSize(.small)
-                            Text("Waiting for AirPods motion data…").font(Theme.body(14)).foregroundStyle(.white.opacity(0.7))
+                            Text(usesCase ? "Waiting for the AirPods case…" : "Waiting for AirPods motion data…")
+                                .font(Theme.body(14)).foregroundStyle(.white.opacity(0.7))
                         }
                     }
                     ForEach(calibration.streams) { s in
                         HStack {
-                            Image(systemName: s.id == .phone ? "iphone" : "airpodpro.\(s.id == .left ? "left" : "right")")
+                            Image(systemName: s.id.symbol)
                                 .font(.system(size: 22))
                                 .foregroundStyle(s.live ? Color.green : Color.gray)
                             VStack(alignment: .leading, spacing: 2) {
@@ -72,7 +87,7 @@ struct CalibrationView: View {
                         }
                     }
                     let live = calibration.streams.filter { $0.live }.count
-                    Text(calibration.streamHint(mode: mode))
+                    Text(calibration.streamHint(mode: mode, grip: model.settings.airPodGrip))
                         .font(Theme.body(13))
                         .foregroundStyle(.white.opacity(0.65))
                         .fixedSize(horizontal: false, vertical: true)
@@ -93,11 +108,20 @@ struct CalibrationView: View {
     }
 
     private var mode: InputMode { model.settings.inputMode }
+    private var usesCase: Bool { model.usesAirPodsCase }
 
     private var checklist: [(String, String)] {
         let pod = model.settings.primaryHand.name.lowercased()
         let other = model.settings.primaryHand.other.name.lowercased()
         var steps: [(String, String)] = []
+        if usesCase {
+            // The case panel covers the AirPods; only the phone's steps remain.
+            if mode.usesPhone {
+                steps.append(("Open Swift Saber on your iPhone",
+                              "Same Wi-Fi network as this Mac. Hold it in your \(other) fist; any orientation works."))
+            }
+            return steps
+        }
         if mode.usesAirPods {
             steps.append(("Connect your AirPods to this Mac",
                           "AirPods Pro / Max / 3rd gen or later with spatial audio support."))
@@ -125,7 +149,7 @@ struct CalibrationView: View {
 
     private var calibrating: some View {
         let active = calibration.streams.filter { $0.step != nil }
-        let text = CalibrationModel.instruction(for: calibration.currentStep, count: active.count)
+        let text = CalibrationModel.instruction(for: calibration.currentStep, count: active.count, grip: model.settings.airPodGrip)
         return Panel(padding: 36) {
             VStack(spacing: 28) {
                 PoseIllustration(step: calibration.currentStep)

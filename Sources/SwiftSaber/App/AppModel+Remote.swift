@@ -89,14 +89,19 @@ extension AppModel {
         case .detecting:
             c.phase = .detecting
             c.title = "Get ready"
-            c.detail = cal.streamHint(mode: settings.inputMode)
+            c.detail = cal.streamHint(mode: settings.inputMode, grip: settings.airPodGrip)
             c.streams = cal.streams.map { RemoteState.Calibration.Stream(id: "\($0.id.rawValue)", name: $0.id.label, live: $0.live, progress: 0, done: false) }
             c.canStart = cal.streams.contains { $0.live }
             c.failure = cal.failure
+            if settings.inputMode.usesAirPods {
+                c.airPodGrip = settings.airPodGrip.rawValue
+                c.airPodGrips = AirPodGrip.allCases.map { RemoteState.Option(id: $0.rawValue, title: $0.title) }
+                if usesAirPodsCase { c.airPodsCase = remoteCase() }
+            }
         case .calibrating:
             c.phase = .calibrating
             let active = cal.streams.filter { $0.step != nil }
-            let text = CalibrationModel.instruction(for: cal.currentStep, count: active.count)
+            let text = CalibrationModel.instruction(for: cal.currentStep, count: active.count, grip: settings.airPodGrip)
             c.title = text.title
             c.detail = text.detail
             let current = CalibrationModel.stepIndex(cal.currentStep)
@@ -108,6 +113,36 @@ extension AppModel {
             c.phase = .done
             c.title = "You're calibrated"
             c.detail = "Your sabers are live — give them a swing. Tap Recenter any time they drift."
+        }
+        return c
+    }
+
+    private func remoteCase() -> RemoteState.Calibration.AirPodsCase {
+        let session = airPodsCase
+        var c = RemoteState.Calibration.AirPodsCase()
+        c.problem = session.problem
+        switch session.stage {
+        case .off:
+            c.step = 1; c.title = "Get the case ready"
+            c.detail = "Both AirPods Pro in their case, paired with the Mac. Then tap Connect and open the lid."
+            c.action = "connect"; c.actionTitle = session.problem == nil ? "CONNECT CASE" : "CONNECT AGAIN"
+        case .preparing, .openLid, .connecting:
+            c.step = 2; c.title = "Open the lid"
+            c.detail = session.stage == .connecting ? "Connecting — keep the lid open for a moment." : "Swift Saber connects while the lid is open. Keep both AirPods inside."
+            c.action = "cancel"; c.actionTitle = "CANCEL"
+        case .closeLid:
+            c.step = 3; c.title = "Close the lid"
+            c.detail = "Keep both AirPods inside. It's noticed by itself, or tap Lid Is Closed."
+            c.action = "lidClosed"; c.actionTitle = "LID IS CLOSED"
+        case .holdStill, .linking:
+            c.step = 4; c.title = "Set it down"
+            c.detail = session.holdMoving ? "Movement detected — leave the case still." : "Put the closed case on a flat surface and don't touch it while the ring fills."
+            c.progress = session.holdProgress
+            c.action = "cancel"; c.actionTitle = "CANCEL"
+        case .ready:
+            c.step = 6; c.connected = true; c.title = "Case connected"
+            c.detail = "Pick it up and hold it like a hilt — calibration starts by itself."
+            c.action = "disconnect"; c.actionTitle = "DISCONNECT CASE"
         }
         return c
     }
@@ -236,6 +271,17 @@ extension AppModel {
                 calibration.deactivate()
                 goToLevelSelect()
             }
+        case .setAirPodGrip(let raw):
+            if let grip = AirPodGrip(rawValue: raw), screen == .calibration || screen == .settings {
+                settings.airPodGrip = grip
+                audio.play(.click, volume: 0.5)
+            }
+        case .connectCase:
+            if usesAirPodsCase { airPodsCase.connect() }
+        case .caseLidClosed:
+            airPodsCase.confirmLidClosed()
+        case .disconnectCase:
+            airPodsCase.disconnect()
         case .useMouseInstead:
             if screen == .calibration {
                 settings.inputMode = .mouse
