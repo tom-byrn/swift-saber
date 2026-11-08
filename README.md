@@ -58,6 +58,10 @@ AirPods only stream motion from **one bud at a time** ([Apple, WWDC23](https://d
 - a faster update rate
 - haptic feedback on every cut
 
+### …or the whole AirPods case
+
+With **AirPods Pro 2 or 3** you can leave both buds in their **closed charging case** and hold the case as the hilt: bigger, easier to grip, and no Automatic Ear Detection to switch off. Choose **Closed case** under *Hold the AirPods as* in Saber Setup or Settings. This uses the closed-case motion method from [AirPointer](https://github.com/musubipapi/airpointer) by Andy Gao (MIT). Its two Bluetooth helpers are bundled in [`Helpers/AirPodsCase`](Helpers/AirPodsCase).
+
 | Input mode | Sabers |
 | --- | --- |
 | **AirPod + iPhone** (default) | Two: AirPod in your main hand, iPhone in the other |
@@ -89,6 +93,18 @@ Prefer not to build? Every push is built by GitHub Actions. Download the **Swift
 
 - **AirPods:** connect them to the Mac, then turn off **Automatic Ear Detection** (System Settings › *your AirPods*). Otherwise motion stops as soon as a bud leaves your ear. Hold **one** bud.
 - **iPhone:** use the same Wi-Fi as the Mac and open the Swift Saber app. Allow **Local Network** access on both devices; the phone finds the game automatically.
+
+#### Using the closed case instead
+
+Saber Setup walks you through it:
+
+1. **Get the case ready.** Both AirPods Pro go in the case, paired with the Mac. If they're also paired with your iPhone, turn the iPhone's Bluetooth off (the Swift Saber phone app uses Wi-Fi).
+2. **Connect Case, then open the lid.** The first time, allow Bluetooth access.
+3. **Close the lid.** This is usually detected automatically; otherwise press *Lid Is Closed*.
+4. **Set it down** on a flat surface until the ring fills. This is only needed about once a week, because the sensor offset is saved.
+5. **Pick it up.** Calibration then starts by itself.
+
+Know what a session does before you use it. While connected, Mac sound and the microphone are kept off those AirPods, and silence is played to them to keep the link awake. Connecting briefly drops their audio, so don't connect during a call. Ending a session uses up diagnostic data stored on the case. A session lasts about **30 minutes** after the lid closes (a firmware limit); to keep playing, connect again. If the case saber points back at you, turn on **Flip case saber** in Settings. The phone mirrors every step, so you can connect from the iPhone too.
 
 ### 4. Calibrate and play
 

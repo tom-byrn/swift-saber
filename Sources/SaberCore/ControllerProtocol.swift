@@ -145,12 +145,33 @@ public struct RemoteState: Codable, Equatable, Sendable {
                 self.id = id; self.name = name; self.live = live; self.progress = progress; self.done = done
             }
         }
+        /// The guided closed-case connection (only when the AirPods are held in their case).
+        public struct AirPodsCase: Codable, Equatable, Sendable {
+            /// What the phone's main case button does: "connect", "lidClosed", "disconnect" or "cancel".
+            public var action = "connect"
+            public var actionTitle = "CONNECT CASE"
+            /// 1-based current step, of `stepCount`; above `stepCount` once connected.
+            public var step = 1
+            public var stepCount = 5
+            public var title = ""
+            public var detail = ""
+            /// Fill of the "set it down" ring, when it's showing.
+            public var progress: Double?
+            public var problem: String?
+            public var connected = false
+            public init() {}
+        }
+
         public var phase: Phase = .detecting
         public var streams: [Stream] = []
         public var title = ""
         public var detail = ""
         public var failure: String?
         public var canStart = false
+        /// "bud" or "closedCase", when the input mode uses AirPods. Optional so older Macs decode.
+        public var airPodGrip: String?
+        public var airPodGrips: [Option]?
+        public var airPodsCase: AirPodsCase?
         public init() {}
     }
 
@@ -278,6 +299,8 @@ public enum RemoteCommand: Codable, Equatable, Sendable {
     case pause, resume, restart, quitToMenu, recenter
     // Calibration
     case beginCalibration, restartCalibration, finishCalibration, calibrationPlayNow, useMouseInstead
+    // The closed AirPods case
+    case setAirPodGrip(String), connectCase, caseLidClosed, disconnectCase
     // Arena & colours
     case setArena(String), setCustomColors(Bool), applyColorPreset(String)
     /// Slot 0...3 = left saber, right saber, left lights, right lights; hex "#RRGGBB".

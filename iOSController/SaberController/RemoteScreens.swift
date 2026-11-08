@@ -418,6 +418,65 @@ struct LevelSelectScreen: View {
 
 // MARK: - Calibration
 
+/// The guided closed-case connection, mirrored from the Mac.
+struct CaseSetupCard: View {
+    @EnvironmentObject var model: ControllerModel
+    var setup: RemoteState.Calibration.AirPodsCase
+
+    var body: some View {
+        Card {
+            HStack {
+                SectionLabel("AirPods case")
+                Spacer()
+                Text(setup.connected ? "Connected" : "Step \(min(setup.step, setup.stepCount)) of \(setup.stepCount)")
+                    .font(Theme.body(12))
+                    .foregroundStyle(setup.connected ? Color.green : .white.opacity(0.5))
+            }
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle().stroke(Color.white.opacity(0.15), lineWidth: 5)
+                    if let progress = setup.progress {
+                        Circle().trim(from: 0, to: progress)
+                            .stroke(Neon.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.15), value: progress)
+                    }
+                    Image(systemName: setup.connected ? "checkmark" : "airpodspro.chargingcase.wireless.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(setup.connected ? Color.green : .white)
+                }
+                .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(setup.title).font(Theme.body(17)).foregroundStyle(.white)
+                    Text(setup.detail).font(Theme.body(13)).foregroundStyle(.white.opacity(0.65))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if let problem = setup.problem {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(Theme.body(13)).foregroundStyle(Neon.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            NeonButton(title: setup.actionTitle, icon: icon, color: setup.action == "connect" || setup.action == "lidClosed" ? Neon.blue : .white,
+                       prominent: setup.action == "connect" || setup.action == "lidClosed", height: 52) {
+                switch setup.action {
+                case "connect": model.send(.connectCase)
+                case "lidClosed": model.send(.caseLidClosed)
+                default: model.send(.disconnectCase)
+                }
+            }
+        }
+    }
+
+    private var icon: String {
+        switch setup.action {
+        case "connect": return "antenna.radiowaves.left.and.right"
+        case "lidClosed": return "checkmark"
+        default: return "xmark"
+        }
+    }
+}
+
 struct CalibrationScreen: View {
     @EnvironmentObject var model: ControllerModel
     var state: RemoteState
@@ -439,6 +498,13 @@ struct CalibrationScreen: View {
         VStack(spacing: 14) {
             ScrollView {
                 VStack(spacing: 14) {
+                    if let grip = cal.airPodGrip, let grips = cal.airPodGrips {
+                        Picker("Hold the AirPods as", selection: Binding(get: { grip }, set: { model.send(.setAirPodGrip($0)) })) {
+                            ForEach(grips) { Text($0.title).tag($0.id) }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    if let airPodsCase = cal.airPodsCase { CaseSetupCard(setup: airPodsCase) }
                     Card {
                         SectionLabel("Motion streams")
                         if cal.streams.isEmpty {
@@ -449,7 +515,7 @@ struct CalibrationScreen: View {
                         }
                         ForEach(cal.streams) { s in
                             HStack(spacing: 12) {
-                                Image(systemName: s.name == "iPhone" ? "iphone" : "airpodpro")
+                                Image(systemName: s.name == "iPhone" ? "iphone" : (s.name == "AirPods Case" ? "airpodspro.chargingcase.wireless.fill" : "airpodpro"))
                                     .font(.system(size: 22))
                                     .foregroundStyle(s.live ? Color.green : Color.gray)
                                     .frame(width: 30)

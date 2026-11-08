@@ -37,12 +37,40 @@ enum InputMode: String, Codable, CaseIterable, Identifiable {
     var usesMotionDevices: Bool { usesAirPods || usesPhone }
 }
 
+/// How the AirPod saber is held.
+enum AirPodGrip: String, Codable, CaseIterable, Identifiable {
+    /// One bud in the fist, read through Core Motion's headphone motion.
+    case bud
+    /// Both buds in the closed charging case, which becomes the hilt (AirPods Pro 2 / 3).
+    case closedCase
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .bud: return "AirPod in hand"
+        case .closedCase: return "Closed case"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .bud:
+            return "Hold one bud in your fist. Works with any AirPods that support spatial audio."
+        case .closedCase:
+            return "Keep both buds in the closed charging case and hold the case like a hilt. AirPods Pro 2 or 3; no ear detection to switch off."
+        }
+    }
+}
+
 struct GameSettings: Codable, Equatable {
     var inputMode: InputMode = .airpodAndPhone
     /// Hand that holds the AirPod (or the only device). The iPhone / mouse takes the other hand.
     var primaryHand: Hand = .right
     /// Swap which bud drives which saber in two-saber mode.
     var swapAirPods = false
+    /// Whether the AirPod saber is a bud in the hand or the closed case.
+    var airPodGrip: AirPodGrip = .bud
+    /// For AirPods whose accelerometer reports gravity the other way round: flips the case saber end for end.
+    var invertCaseGravity = false
     /// Multiplies AirPod rotation (1 = natural).
     var sensitivity: Double = 1.15
     /// "auto" (Mac speakers), "system" (system default) or a CoreAudio device UID.
@@ -73,7 +101,7 @@ struct GameSettings: Codable, Equatable {
     init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case inputMode, primaryHand, swapAirPods, sensitivity, audioOutput, musicVolume, sfxVolume
+        case inputMode, primaryHand, swapAirPods, airPodGrip, invertCaseGravity, sensitivity, audioOutput, musicVolume, sfxVolume
         case audioOffsetMs, airPodLatencyMs, noFail, lenientCuts, autoRecenter, keepAirPodsAwake
         case bloom, cameraShake, stage, overrideColors, customColors
     }
@@ -88,6 +116,8 @@ struct GameSettings: Codable, Equatable {
         read(.inputMode, &inputMode)
         read(.primaryHand, &primaryHand)
         read(.swapAirPods, &swapAirPods)
+        read(.airPodGrip, &airPodGrip)
+        read(.invertCaseGravity, &invertCaseGravity)
         read(.sensitivity, &sensitivity)
         read(.audioOutput, &audioOutput)
         read(.musicVolume, &musicVolume)

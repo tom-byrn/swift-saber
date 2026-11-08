@@ -44,6 +44,8 @@ final class AppModel: ObservableObject {
     let renderer: GameRenderer
     let motion: HeadphoneMotionService
     let phone: PhoneControllerServer
+    /// The closed AirPods case as a saber (used when `settings.airPodGrip == .closedCase`).
+    let airPodsCase: AirPodsCaseSession
     lazy var calibration = CalibrationModel(hub: hub)
 
     private var monitors: [Any] = []
@@ -65,6 +67,9 @@ final class AppModel: ObservableObject {
         renderer = GameRenderer(input: hub, audio: audio, stage: loaded.stage, colors: loaded.effectiveColors)
         motion = HeadphoneMotionService(hub: hub)
         phone = PhoneControllerServer(hub: hub)
+        airPodsCase = AirPodsCaseSession(hub: hub)
+        // Put back any audio devices a session moved off the AirPods before a crash or force quit.
+        CaseAudioGuard.shared.restoreAfterCrash()
 
         renderer.onHUD = { [weak self] snap in
             guard let self, self.screen == .playing || self.screen == .paused else { return }
@@ -81,6 +86,21 @@ final class AppModel: ObservableObject {
         audio.onConfigurationChange = { [weak self] in self?.audioConfigurationChanged() }
 
         calibration.onStepCompleted = { [weak self] in self?.audio.play(.calibrationStep, volume: 0.8) }
+        airPodsCase.onStageAdvanced = { [weak self] in
+            guard let self else { return }
+            self.audio.play(.calibrationStep, volume: 0.6)
+            if self.airPodsCase.stage == .ready { self.caseBecameReady() }
+        }
+        airPodsCase.onNewFrame = { [weak self] in
+            // Each connection has its own orientation frame, so the case needs calibrating again.
+            guard let self else { return }
+            self.hub.setCalibration(nil, for: .airPodCase)
+            self.updateAssignment()
+        }
+        airPodsCase.onEnded = { [weak self] message in self?.airPodsCaseEnded(message) }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.airPodsCase.shutdown()
+        }
         calibration.onFinished = { [weak self] results in self?.calibrationFinished(results) }
 
         applySettings(previous: nil)
@@ -132,17 +152,25 @@ final class AppModel: ObservableObject {
         if previous?.audioOutput != settings.audioOutput {
             audio.applyOutput(choice: settings.audioOutput)
         }
-        if settings.inputMode.usesAirPods {
+        if usesHeadphoneMotion {
             motion.start()
         } else {
             motion.stop()
+        }
+        airPodsCase.setInvertGravity(settings.invertCaseGravity)
+        if !usesAirPodsCase && airPodsCase.isActive { airPodsCase.disconnect() }
+        if let previous, previous.invertCaseGravity != settings.invertCaseGravity, hub.calibration(for: .airPodCase) != nil {
+            hub.setCalibration(nil, for: .airPodCase)
+            showToast("Case saber flipped — calibrate it again in Set Up Sabers")
         }
         // Always listen for the phone so it can drive the menus in every input mode;
         // its motion only reaches the sabers when the input mode uses it.
         phone.forwardsMotion = settings.inputMode.usesPhone
         phone.start()
-        if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode {
-            audio.setKeepAirPodsAwake(settings.keepAirPodsAwake && settings.inputMode.usesAirPods)
+        if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode
+            || previous?.airPodGrip != settings.airPodGrip {
+            // A case session keeps its own silent stream going and holds sound off the AirPods.
+            audio.setKeepAirPodsAwake(settings.keepAirPodsAwake && usesHeadphoneMotion)
         }
         updateAssignment()
     }
@@ -157,9 +185,36 @@ final class AppModel: ObservableObject {
         audio.applyOutput(choice: settings.audioOutput)
         audio.setVolumes(music: settings.musicVolume, sfx: settings.sfxVolume)
         refreshOutputDevices()
-        if settings.inputMode.usesAirPods {
+        if usesHeadphoneMotion {
             audio.setKeepAirPodsAwake(false)
             audio.setKeepAirPodsAwake(settings.keepAirPodsAwake)
+        }
+    }
+
+    /// AirPod motion through Core Motion (a bud in the hand).
+    var usesHeadphoneMotion: Bool { settings.inputMode.usesAirPods && settings.airPodGrip == .bud }
+    /// AirPod motion from the closed charging case.
+    var usesAirPodsCase: Bool { settings.inputMode.usesAirPods && settings.airPodGrip == .closedCase }
+
+    /// Guided setup: once the case streams, go straight into calibration if nothing else is awaited.
+    private func caseBecameReady() {
+        guard screen == .calibration, calibration.phase == .detecting else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, self.screen == .calibration, self.calibration.phase == .detecting,
+                  self.airPodsCase.stage == .ready else { return }
+            let live = self.hub.liveStreams()
+            guard live.contains(.airPodCase), !self.settings.inputMode.usesPhone || live.contains(.phone) else { return }
+            self.calibration.begin()
+        }
+    }
+
+    private func airPodsCaseEnded(_ message: String?) {
+        hub.setCalibration(nil, for: .airPodCase)
+        updateAssignment()
+        guard let message else { return }
+        if screen == .playing { pauseGame() } else if screen == .countdown && !isDemo { quitToMenu() }
+        if screen != .calibration {
+            showToast(airPodsCase.lostContact ? "AirPods case went quiet — open the lid, then reconnect in Set Up Sabers" : message)
         }
     }
 
@@ -222,7 +277,7 @@ final class AppModel: ObservableObject {
 
     func openCalibration() {
         if !settings.inputMode.usesMotionDevices { settings.inputMode = .airpodAndPhone }
-        if settings.inputMode.usesAirPods { motion.start() }
+        if usesHeadphoneMotion { motion.start() }
         if settings.inputMode.usesPhone { phone.start() }
         calibration.restart()
         calibration.activate()

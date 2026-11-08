@@ -134,20 +134,23 @@ final class CalibrationModel: ObservableObject {
     }
 
     /// What the setup screen says about the live motion streams.
-    func streamHint(mode: InputMode) -> String {
+    func streamHint(mode: InputMode, grip: AirPodGrip = .bud) -> String {
         let live = streams.filter { $0.live }.count
         let hasPhone = streams.contains { $0.id == .phone && $0.live }
         let hasPod = streams.contains { $0.id.isAirPod && $0.live }
+        let pod = grip == .closedCase ? "AirPods case" : "AirPod"
+        let wake = grip == .closedCase ? "connect the case (left)" : "move the bud around to wake it"
         switch mode {
         case .airpodAndPhone:
-            if hasPhone && hasPod { return "AirPod and iPhone are both streaming — you'll get two sabers." }
-            if hasPhone { return "iPhone connected. Waiting for AirPods motion — move the bud around to wake it." }
-            if hasPod { return "AirPod streaming. Waiting for the iPhone — open Swift Saber on it (same Wi-Fi)." }
-            return "Waiting for your AirPod and iPhone…"
+            if hasPhone && hasPod { return "\(pod) and iPhone are both streaming — you'll get two sabers." }
+            if hasPhone { return "iPhone connected. Waiting for \(pod) motion — \(wake)." }
+            if hasPod { return "\(pod) streaming. Waiting for the iPhone — open Swift Saber on it (same Wi-Fi)." }
+            return "Waiting for your \(pod) and iPhone…"
         case .phone:
             return hasPhone ? "iPhone connected." : "Open Swift Saber on your iPhone (same Wi-Fi network)."
         default:
-            return live > 0 ? "AirPod streaming — you're ready to calibrate." : "Move the AirPod around a little to wake it up."
+            if live > 0 { return "\(pod) streaming — you're ready to calibrate." }
+            return grip == .closedCase ? "Connect the case to start its motion stream." : "Move the AirPod around a little to wake it up."
         }
     }
 
@@ -163,13 +166,14 @@ final class CalibrationModel: ObservableObject {
     }
 
     /// Instruction text for the current step.
-    static func instruction(for step: CalibrationProcess.Step, count: Int) -> (title: String, detail: String) {
+    static func instruction(for step: CalibrationProcess.Step, count: Int, grip: AirPodGrip = .bud) -> (title: String, detail: String) {
         let both = count > 1
+        let thing = grip == .closedCase ? "case" : "AirPod"
         switch step {
         case .pointAtScreen:
             return ("Point at the screen",
-                    both ? "Hold an AirPod in each fist, arms relaxed in front of you, and point both fists at the centre of the screen. Hold still."
-                         : "Hold the AirPod in your fist and point it at the centre of the screen like a sword hilt. Hold still.")
+                    both ? "Hold a device in each fist, arms relaxed in front of you, and point both fists at the centre of the screen. Hold still."
+                         : "Hold the \(thing) in your fist and point it at the centre of the screen like a sword hilt. Hold still.")
         case .pointUp:
             return ("Now point at the ceiling",
                     both ? "Raise both fists so they point straight up, without twisting your wrists. Hold still."
