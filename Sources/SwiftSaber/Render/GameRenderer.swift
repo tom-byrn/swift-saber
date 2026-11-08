@@ -96,6 +96,8 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     private var gameOverSent = false
     private var noFail = false
     private var autoplay: AutoplayDriver?
+    /// Hides both sabers (e.g. during calibration, where their motion is meaningless).
+    private var sabersHidden = false
     private let cameraBase = Arena.cameraPosition.simd
 
     init(input: InputHub, audio: GameAudio, stage kind: StageKind = .prismHall, colors: SaberColorScheme = .classic) {
@@ -155,6 +157,11 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         camera.bloomIntensity = bloom ? 1.35 : 0
         camera.colorFringeStrength = bloom ? 0.35 : 0
         cameraShakeEnabled = cameraShake
+    }
+
+    func setSabersHidden(_ hidden: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        sabersHidden = hidden
     }
 
     // MARK: Arena & colours (main thread)
@@ -345,6 +352,9 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         }
         if let s = session, s.isOneSaber, mode != .menu {
             inputs = inputs.map { $0.hand == primaryHand ? $0 : SaberInput(hand: $0.hand, direction: $0.direction, active: false) }
+        }
+        if sabersHidden {
+            inputs = inputs.map { SaberInput(hand: $0.hand, direction: $0.direction, active: false) }
         }
         for i in inputs { sabers[i.hand]?.update(input: i, time: now, dt: dt) }
 

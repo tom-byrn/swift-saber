@@ -16,6 +16,8 @@ public enum ControllerProtocol {
 public enum ControllerButton: UInt8, Sendable {
     case recenter = 1
     case pause = 2
+    /// Moves calibration on to the next pose.
+    case next = 3
 }
 
 public enum ControllerMessage: Equatable, Sendable {
@@ -172,6 +174,9 @@ public struct RemoteState: Codable, Equatable, Sendable {
         public var airPodGrip: String?
         public var airPodGrips: [Option]?
         public var airPodsCase: AirPodsCase?
+        /// While calibrating: the current pose is captured and NEXT moves on. Optional so
+        /// older Macs (which advance on their own) decode.
+        public var canAdvance: Bool?
         public init() {}
     }
 
@@ -299,6 +304,8 @@ public enum RemoteCommand: Codable, Equatable, Sendable {
     case pause, resume, restart, quitToMenu, recenter
     // Calibration
     case beginCalibration, restartCalibration, finishCalibration, calibrationPlayNow, useMouseInstead
+    /// Moves calibration on to the next pose once the current one is captured.
+    case calibrationNext
     // The closed AirPods case
     case setAirPodGrip(String), connectCase, caseLidClosed, disconnectCase
     // Arena & colours

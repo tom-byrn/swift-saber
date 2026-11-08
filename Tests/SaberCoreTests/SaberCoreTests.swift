@@ -89,12 +89,47 @@ final class CalibrationTests: XCTestCase {
             }
         }
         feed(sim.center[0], seconds: 1.5)
+        // Captured, but waits for the player to press Next.
+        XCTAssertEqual(p.step, .pointAtScreen)
+        XCTAssertTrue(p.isAwaitingNext)
+        feed(sim.up[0], seconds: 1.5) // moving while waiting does nothing
+        XCTAssertEqual(p.step, .pointAtScreen)
+        XCTAssertTrue(p.advance())
         XCTAssertEqual(p.step, .pointUp)
         feed(sim.up[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .pointUp)
+        XCTAssertTrue(p.isAwaitingNext)
+        XCTAssertNotNil(p.result)
+        XCTAssertTrue(p.advance())
         XCTAssertEqual(p.step, .confirmCenter)
         feed(sim.center[0], seconds: 1.5)
         XCTAssertEqual(p.step, .done)
         XCTAssertNotNil(p.result)
+    }
+
+    /// Holding still at the ceiling must not count as "back to the centre".
+    func testConfirmCenterIgnoresCeilingPose() {
+        let grip = Quat(axis: Vec3(1, 2, 3), angle: 0.7)
+        let sim = simulate(deviceToWorld: true, grip: grip, heading: -0.3)
+        let p = CalibrationProcess(waitsForNext: false)
+        var t = 0.0
+        func feed(_ s: MotionSample, seconds: Double) {
+            let end = t + seconds
+            while t < end {
+                p.add(MotionSample(time: t, attitude: s.attitude, gravity: s.gravity))
+                t += 0.04
+            }
+        }
+        feed(sim.center[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .pointUp)
+        feed(sim.up[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .confirmCenter)
+        feed(sim.up[0], seconds: 3)
+        XCTAssertEqual(p.step, .confirmCenter)
+        XCTAssertEqual(p.holdProgress, 0)
+        XCTAssertNotNil(p.poseHint)
+        feed(sim.center[0], seconds: 1.5)
+        XCTAssertEqual(p.step, .done)
     }
 }
 
@@ -257,6 +292,8 @@ final class ControllerProtocolTests: XCTestCase {
             .hello(name: "Tom’s iPhone"),
             .button(.recenter),
             .button(.pause),
+            .button(.next),
+            .command(id: 42, .calibrationNext),
             .status(hand: 1, calibrated: true, macName: "MacBook Pro"),
             .status(hand: -1, calibrated: false, macName: ""),
             .haptic(intensity: 0.75),

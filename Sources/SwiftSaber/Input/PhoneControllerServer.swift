@@ -18,7 +18,7 @@ final class PhoneControllerServer: ObservableObject {
 
     @Published private(set) var status: Status = .off
 
-    /// Called on the main thread when the phone's Recenter / Pause buttons are tapped.
+    /// Called on the main thread when the phone's Recenter / Pause / Next buttons are tapped.
     var onButton: ((ControllerButton) -> Void)?
     /// Called on the main thread for each remote-control command from the phone.
     var onCommand: ((RemoteCommand) -> Void)?

@@ -101,14 +101,16 @@ extension AppModel {
         case .calibrating:
             c.phase = .calibrating
             let active = cal.streams.filter { $0.step != nil }
-            let text = CalibrationModel.instruction(for: cal.currentStep, count: active.count, grip: settings.airPodGrip)
+            let text = CalibrationModel.instruction(for: cal.currentStep, count: active.count, grip: settings.airPodGrip,
+                                                    awaitingNext: cal.canAdvance)
             c.title = text.title
             c.detail = text.detail
             let current = CalibrationModel.stepIndex(cal.currentStep)
             c.streams = active.map {
                 RemoteState.Calibration.Stream(id: "\($0.id.rawValue)", name: $0.id.label, live: $0.live, progress: $0.progress,
-                      done: CalibrationModel.stepIndex($0.step) > current)
+                      done: $0.awaitingNext || CalibrationModel.stepIndex($0.step) > current)
             }
+            c.canAdvance = cal.canAdvance
         case .done:
             c.phase = .done
             c.title = "You're calibrated"
@@ -262,6 +264,8 @@ extension AppModel {
 
         case .beginCalibration:
             if screen == .calibration && calibration.phase == .detecting { calibration.begin() }
+        case .calibrationNext:
+            if screen == .calibration && calibration.phase == .calibrating { calibrationNext() }
         case .restartCalibration:
             if screen == .calibration { calibration.restart() }
         case .finishCalibration:

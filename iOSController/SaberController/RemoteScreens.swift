@@ -589,6 +589,17 @@ struct CalibrationScreen: View {
             }
             .padding(.top, 8)
             Spacer()
+            if let canAdvance = cal.canAdvance {
+                NeonButton(title: "NEXT", icon: "chevron.right", color: Neon.blue, prominent: true, height: 96) {
+                    model.send(.calibrationNext)
+                }
+                .disabled(!canAdvance)
+                .animation(.easeOut(duration: 0.2), value: canAdvance)
+                if !canAdvance {
+                    Text("Hold still until the ring fills.")
+                        .font(Theme.body(13)).foregroundStyle(.white.opacity(0.55))
+                }
+            }
             NeonButton(title: "RESTART", icon: "arrow.counterclockwise", color: .gray) { model.send(.restartCalibration) }
         }
         .padding(.horizontal, 24)

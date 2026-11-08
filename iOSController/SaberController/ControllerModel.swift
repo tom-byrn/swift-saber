@@ -202,6 +202,10 @@ final class ControllerModel: ObservableObject {
                 link = .connected(macName.isEmpty ? (preferredMac ?? "Mac") : macName)
             }
         case let .remoteState(state):
+            // Buzz when a calibration pose is captured so the player knows they can move.
+            if state.calibration.canAdvance == true, remote?.calibration.canAdvance != true {
+                heavy.impactOccurred(intensity: 0.8)
+            }
             if remote == nil { NSLog("SaberRemote first remote state: \(state.screen.rawValue)") }
             lastStatus = Date()
             if Date().timeIntervalSince(lastLocalEdit) < 0.4, let current = remote {

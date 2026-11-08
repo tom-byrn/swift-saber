@@ -18,7 +18,9 @@ enum Screen: Equatable {
 
 /// Top-level state machine: owns input, audio, the renderer and the screens.
 final class AppModel: ObservableObject {
-    @Published var screen: Screen = .loading
+    @Published var screen: Screen = .loading {
+        didSet { if screen != oldValue { updateSaberVisibility() } }
+    }
     @Published var loadingProgress: Double = 0
     @Published var hud = HUDSnapshot()
     @Published var results: GameResults?
@@ -102,6 +104,10 @@ final class AppModel: ObservableObject {
             self?.airPodsCase.shutdown()
         }
         calibration.onFinished = { [weak self] results in self?.calibrationFinished(results) }
+        calibration.onPhaseChanged = { [weak self] _ in
+            self?.updateSaberVisibility()
+            self?.sendPhoneState()
+        }
 
         applySettings(previous: nil)
         outputDevices = AudioDevices.outputDevices()
@@ -289,6 +295,18 @@ final class AppModel: ObservableObject {
         screen = .menu
     }
 
+    /// The sabers would swing around wildly (or with a stale calibration) while calibrating,
+    /// so they are hidden until calibration is done.
+    private func updateSaberVisibility() {
+        renderer.setSabersHidden(screen == .calibration && calibration.phase != .done)
+    }
+
+    /// Next button (on screen, keyboard or iPhone) during calibration.
+    func calibrationNext() {
+        calibration.next()
+        sendPhoneState()
+    }
+
     private func calibrationFinished(_ results: [StreamID: SaberCalibration]) {
         hub.clearCalibrations()
         for (id, c) in results { hub.setCalibration(c, for: id) }
@@ -299,7 +317,15 @@ final class AppModel: ObservableObject {
     // MARK: iPhone controller
 
     private func phoneButton(_ b: ControllerButton) {
+        // While calibrating, any phone button moves on to the next pose (older phone apps
+        // have no NEXT button, so Recenter / Pause work too).
+        if screen == .calibration && calibration.phase == .calibrating {
+            calibrationNext()
+            return
+        }
         switch b {
+        case .next:
+            if screen == .calibration && calibration.phase == .detecting { calibration.begin() }
         case .recenter:
             recenter()
         case .pause:
@@ -594,6 +620,7 @@ final class AppModel: ObservableObject {
         case 49: // Space
             if screen == .playing { pauseGame(); return true }
             if screen == .paused { resumeGame(); return true }
+            if screen == .calibration && calibration.phase == .calibrating { calibrationNext(); return true }
             return false
         case 36, 76: // Return / Enter
             switch screen {
@@ -601,6 +628,7 @@ final class AppModel: ObservableObject {
             case .levelSelect: startLevel()
             case .results: restartLevel()
             case .calibration where calibration.phase == .detecting: calibration.begin()
+            case .calibration where calibration.phase == .calibrating: calibrationNext()
             case .calibration where calibration.phase == .done: closeCalibration()
             default: return false
             }
