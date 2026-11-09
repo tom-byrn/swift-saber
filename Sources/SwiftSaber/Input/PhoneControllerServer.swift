@@ -140,7 +140,8 @@ final class PhoneControllerServer: ObservableObject {
         }
         watchdog?.invalidate()
         watchdog = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.queue.async { self?.dropSilentClients() }
+            guard let self else { return }
+            self.queue.async { self.dropSilentClients() }
         }
     }
 

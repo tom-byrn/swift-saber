@@ -40,14 +40,14 @@ final class ControllerModel: ObservableObject {
     private static let wantsSaberKey = "SaberController.wantsSaber"
 
     /// iPhone or iPad.
-    static let kind: ControllerDevice.Kind = UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone
+    static var kind: ControllerDevice.Kind { UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone }
     /// What to call this device in instructions: "phone" or "iPad".
     static var deviceWord: String { kind == .iPad ? "iPad" : "phone" }
     /// Identifies this install to the Mac, so it gets its saber (and calibration) back after reconnecting.
     private static let deviceID: String = {
         let key = "SaberController.deviceID"
         if let id = UserDefaults.standard.string(forKey: key) { return id }
-        let id = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        let id = UUID().uuidString
         UserDefaults.standard.set(id, forKey: key)
         return id
     }()
