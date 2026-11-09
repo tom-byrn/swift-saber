@@ -51,6 +51,7 @@ final class OrbitStage: Stage {
                        glowWidth: 0.12,
                        nebulae: SkyStyle.ring(of: 6, v: 0.33, radius: 0.14, colors: [violet, teal, rose])
                            + SkyStyle.ring(of: 5, v: 0.62, radius: 0.12, colors: [deepBlue, violet], offset: 0.1))
+        restGlow = 0.16
         fogColor = NSColor(calibratedRed: 0.02, green: 0.025, blue: 0.06, alpha: 1)
         fogStart = 90
         fogEnd = 460

@@ -91,12 +91,6 @@ struct SkyStyle {
     var glowWidth: CGFloat = 0.06
     var nebulae: [Nebula] = []
 
-    static let night = SkyStyle(
-        zenith: NSColor(calibratedRed: 0.01, green: 0.012, blue: 0.035, alpha: 1),
-        horizon: NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.13, alpha: 1),
-        nadir: NSColor(calibratedRed: 0.01, green: 0.01, blue: 0.025, alpha: 1),
-        glow: NSColor(calibratedRed: 0.12, green: 0.14, blue: 0.3, alpha: 1))
-
     /// The same nebula repeated at several longitudes, so some of it is always in view.
     static func ring(of count: Int, v: CGFloat, radius: CGFloat, colors: [NSColor], offset: CGFloat = 0) -> [Nebula] {
         (0..<count).map { i in
@@ -113,20 +107,21 @@ struct SkyStyle {
 class Stage {
     let root = SCNNode()
 
-    /// Scene atmosphere for this arena (applied by the renderer). Keep `fogColor` close to the
-    /// sky's horizon so distant geometry melts into the sky rather than into black.
-    var fogColor = NSColor(calibratedRed: 0.04, green: 0.045, blue: 0.1, alpha: 1)
+    /// Scene atmosphere for this arena (applied by the renderer). With a sky, keep `fogColor`
+    /// close to its horizon so distant geometry melts into the sky rather than into black.
+    var fogColor = NSColor(calibratedRed: 0.01, green: 0.012, blue: 0.03, alpha: 1)
     var fogStart: CGFloat = 28
     var fogEnd: CGFloat = 150
-    var sky = SkyStyle.night
+    /// Optional sky; without one the arena sits in a plain black void.
+    var sky: SkyStyle?
     /// How strongly the sky lights metal surfaces.
     var environmentIntensity: CGFloat = 1.5
     /// The sky image (background + lighting environment), built once after `build()`.
-    private(set) lazy var skyImage: CGImage? = Textures.sky(sky)
+    private(set) lazy var skyImage: CGImage? = sky.flatMap { Textures.sky($0) }
     /// Background brightness for this frame: it swells gently with the back lights.
     private(set) var skyBrightness: CGFloat = 1
-    /// Lights never fade below this, so the arena stays readable through blackouts.
-    var restGlow: Double = 0.16
+    /// Lights never fade below this. Arenas set it above 0 to stay readable through blackouts.
+    var restGlow: Double = 0
 
     private struct GroupState {
         var color: LightColor = .blue

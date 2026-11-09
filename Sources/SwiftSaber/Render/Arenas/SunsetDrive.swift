@@ -35,6 +35,7 @@ final class SunsetDriveStage: Stage {
                        nebulae: SkyStyle.ring(of: 6, v: 0.36, radius: 0.07,
                                               colors: [NSColor(calibratedRed: 0.2, green: 0.05, blue: 0.24, alpha: 1),
                                                        NSColor(calibratedRed: 0.24, green: 0.07, blue: 0.16, alpha: 1)]))
+        restGlow = 0.16
         fogColor = NSColor(calibratedRed: 0.17, green: 0.04, blue: 0.16, alpha: 1)
         fogStart = 60
         fogEnd = 320

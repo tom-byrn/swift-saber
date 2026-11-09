@@ -36,6 +36,7 @@ final class NeonSkylineStage: Stage {
                        nadir: NSColor(calibratedRed: 0.2, green: 0.09, blue: 0.12, alpha: 1),
                        glow: NSColor(calibratedRed: 0.36, green: 0.14, blue: 0.28, alpha: 1),
                        glowWidth: 0.09)
+        restGlow = 0.16
         fogColor = NSColor(calibratedRed: 0.1, green: 0.045, blue: 0.13, alpha: 1)
         fogStart = 35
         fogEnd = 270

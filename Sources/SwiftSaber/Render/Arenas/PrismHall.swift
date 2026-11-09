@@ -3,10 +3,8 @@ import SceneKit
 import simd
 import SaberCore
 
-/// The "Prism Hall" stage: a reflective runway in a vast hall, receding octagonal prism rings,
-/// sweeping laser fans and a horizon emblem. Light pillars hold up overhead trusses, tiered
-/// stands line both sides and prism crystals hang in the air. Every light is driven by the
-/// beatmap's light events.
+/// The "Prism Hall" stage: a reflective runway in a dark void, receding octagonal prism rings,
+/// sweeping laser fans and a horizon emblem. Every light is driven by the beatmap's light events.
 final class PrismHallStage: Stage {
     private var rings: [SCNNode] = []
     private var ringAngles: [Double] = []
@@ -19,27 +17,14 @@ final class PrismHallStage: Stage {
     private var rightLasers: [SCNNode] = []
     private var laserPhase: [LightGroup: Double] = [.leftLasers: 0, .rightLasers: 1.7]
 
-    private var crystals: [(node: SCNNode, phase: Double)] = []
-
     private var backLight: SCNLight?
 
     override func build() {
-        sky = SkyStyle(zenith: NSColor(calibratedRed: 0.012, green: 0.012, blue: 0.045, alpha: 1),
-                       horizon: NSColor(calibratedRed: 0.07, green: 0.065, blue: 0.17, alpha: 1),
-                       nadir: NSColor(calibratedRed: 0.01, green: 0.01, blue: 0.03, alpha: 1),
-                       glow: NSColor(calibratedRed: 0.17, green: 0.13, blue: 0.36, alpha: 1),
-                       glowWidth: 0.05)
-        fogColor = NSColor(calibratedRed: 0.055, green: 0.05, blue: 0.13, alpha: 1)
-        fogStart = 30
-        fogEnd = 175
-
         buildFloor()
-        buildStands()
         buildRings()
         buildLasers()
         buildBack()
-        buildCrystals()
-        addBaseLights(ambient: NSColor(calibratedRed: 0.5, green: 0.52, blue: 0.8, alpha: 1), ambientIntensity: 240)
+        addBaseLights()
         backLight = makeGroupLight(at: SCNVector3(0, 10, -26))
         addDust()
     }
@@ -69,7 +54,7 @@ final class PrismHallStage: Stage {
             rails.addChildNode(n)
         }
         // Side light pillars.
-        let pillarBody = Materials.metal(NSColor(calibratedWhite: 0.1, alpha: 1), roughness: 0.4, metalness: 0.75)
+        let pillarBody = Materials.metal(NSColor(calibratedWhite: 0.03, alpha: 1), roughness: 0.4, metalness: 0.8)
         for side in [-1.0, 1.0] {
             for i in 0..<10 {
                 let z = -14.0 - Double(i) * 11
@@ -84,108 +69,9 @@ final class PrismHallStage: Stage {
                 let sn = SCNNode(geometry: strip)
                 sn.position = SCNVector3(x - side * 0.31, 7, z)
                 rails.addChildNode(sn)
-                // Glowing cap on each pillar.
-                let cap = SCNBox(width: 0.8, height: 0.18, length: 0.8, chamferRadius: 0.02)
-                cap.materials = [trimMat]
-                let cn = SCNNode(geometry: cap)
-                cn.position = SCNVector3(x, 14.05, z)
-                rails.addChildNode(cn)
-            }
-        }
-        // Overhead trusses join the nearer pillar pairs (the far ones would cross the emblem).
-        let underside = groupMaterial(.floor, strength: 0.7)
-        for i in 0..<6 {
-            let z = Float(-14 - Double(i) * 11)
-            let x = Float(7.5 + Double(i % 2) * 1.5)
-            rails.addChildNode(Stage.segment(SIMD3(-x, 14.4, z), SIMD3(x, 14.4, z), thickness: 0.55, material: pillarBody))
-            rails.addChildNode(Stage.segment(SIMD3(-x, 14.1, z), SIMD3(x, 14.1, z), thickness: 0.07, material: underside))
-            // Diagonal braces down to the pillars.
-            for side: Float in [-1, 1] {
-                rails.addChildNode(Stage.segment(SIMD3(side * (x - 2.5), 14.3, z), SIMD3(side * x, 11.5, z), thickness: 0.22, material: pillarBody))
             }
         }
         root.addChildNode(rails.flattenedClone())
-
-        // Faint floor grid either side of the runway (pulses with the floor lights).
-        let gridMat = groupMaterial(.floor, strength: 0.3)
-        let grid = SCNNode()
-        for x: Float in [2.5, 4.5, 6.5, 10.5, 14.5, 18.5] {
-            for side: Float in [-1, 1] {
-                grid.addChildNode(Stage.segment(SIMD3(side * x, 0.004, -1.5), SIMD3(side * x, 0.004, -140),
-                                                thickness: 0.03, height: 0.004, material: gridMat))
-            }
-        }
-        var gz: Float = -5
-        while gz > -140 {
-            for side: Float in [-1, 1] {
-                grid.addChildNode(Stage.segment(SIMD3(side * 1.7, 0.004, gz), SIMD3(side * 20, 0.004, gz),
-                                                thickness: 0.03, height: 0.004, material: gridMat))
-            }
-            gz -= 5
-        }
-        root.addChildNode(grid.flattenedClone())
-    }
-
-    /// Tiered stands either side of the hall, each step edged with light.
-    private func buildStands() {
-        let body = Materials.metal(NSColor(calibratedRed: 0.09, green: 0.09, blue: 0.12, alpha: 1), roughness: 0.5, metalness: 0.6)
-        let edge = groupMaterial(.floor, strength: 0.6)
-        let stands = SCNNode()
-        let zNear: Float = -12, zFar: Float = -132
-        for side: Float in [-1, 1] {
-            for k in 0..<4 {
-                let h = Float(1.5) * Float(k + 1)
-                let inner = Float(22) + Float(k) * 3
-                let box = SCNBox(width: 3, height: CGFloat(h), length: CGFloat(zNear - zFar), chamferRadius: 0)
-                box.materials = [body]
-                let n = SCNNode(geometry: box)
-                n.simdPosition = SIMD3(side * (inner + 1.5), h / 2, (zNear + zFar) / 2)
-                stands.addChildNode(n)
-                stands.addChildNode(Stage.segment(SIMD3(side * inner, h + 0.02, zNear), SIMD3(side * inner, h + 0.02, zFar),
-                                                  thickness: 0.07, material: edge))
-            }
-            // Vertical dividers on the stand faces every 10 m.
-            var z = zNear - 4
-            while z > zFar {
-                for k in 0..<4 {
-                    let inner = Float(22) + Float(k) * 3
-                    let h = Float(1.5) * Float(k + 1)
-                    stands.addChildNode(Stage.segment(SIMD3(side * (inner - 0.02), h - 1.5, z), SIMD3(side * (inner - 0.02), h, z),
-                                                      thickness: 0.05, material: edge))
-                }
-                z -= 10
-            }
-        }
-        root.addChildNode(stands.flattenedClone())
-    }
-
-    /// Octahedral crystals hanging high on either side; they glow with the back lights.
-    private func buildCrystals() {
-        let mat = groupMaterial(.back, strength: 0.8)
-        let glow = groupMaterial(.back, glow: true, glowOpacity: 0.18)
-        let spots: [SIMD3<Float>] = [
-            SIMD3(-13, 18, -38), SIMD3(14, 19.5, -52), SIMD3(-16, 20, -70), SIMD3(17, 18.5, -86),
-            SIMD3(-14, 21, -104), SIMD3(15, 20.5, -118),
-        ]
-        for (i, p) in spots.enumerated() {
-            let gem = SCNNode()
-            for flip in [false, true] {
-                let pyr = SCNPyramid(width: 1.6, height: 2.2, length: 1.6)
-                pyr.materials = [mat]
-                let pn = SCNNode(geometry: pyr)
-                if flip { pn.eulerAngles.x = .pi }
-                gem.addChildNode(pn)
-            }
-            let halo = SCNSphere(radius: 2.2)
-            halo.segmentCount = 16
-            halo.materials = [glow]
-            gem.addChildNode(SCNNode(geometry: halo))
-            let holder = SCNNode()
-            holder.addChildNode(gem.flattenedClone())
-            holder.simdPosition = p
-            root.addChildNode(holder)
-            crystals.append((holder, Double(i) * 1.1))
-        }
     }
 
     private func buildRings() {
@@ -219,7 +105,7 @@ final class PrismHallStage: Stage {
             let frame = SCNTorus(ringRadius: CGFloat(radius) * 1.02, pipeRadius: 0.25)
             frame.ringSegmentCount = 8
             frame.pipeSegmentCount = 4
-            frame.materials = [Materials.metal(NSColor(calibratedWhite: 0.1, alpha: 1), roughness: 0.3, metalness: 0.85)]
+            frame.materials = [Materials.metal(NSColor(calibratedWhite: 0.04, alpha: 1), roughness: 0.3, metalness: 0.9)]
             let fn = SCNNode(geometry: frame)
             fn.eulerAngles.x = .pi / 2
             fn.position = SCNVector3(0, 0, -0.3)
@@ -335,12 +221,6 @@ final class PrismHallStage: Stage {
             ringAngles[i] += ringSpinVelocity * dt * (1 + Double(i) * 0.06)
             r.eulerAngles.z = CGFloat(ringAngles[i])
             r.position.z = CGFloat(-20 - Double(i) * ringSpacing)
-        }
-
-        // Crystals turn slowly and sway.
-        for c in crystals {
-            c.node.eulerAngles.y = CGFloat(time * 0.5 + c.phase)
-            c.node.eulerAngles.z = CGFloat(0.15 * sin(time * 0.7 + c.phase))
         }
 
         // Lasers sweep around their base.

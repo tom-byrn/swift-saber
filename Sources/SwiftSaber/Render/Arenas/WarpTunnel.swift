@@ -43,6 +43,7 @@ final class WarpTunnelStage: Stage {
                                                        NSColor(calibratedRed: 0.15, green: 0.06, blue: 0.25, alpha: 1)])
                            + SkyStyle.ring(of: 4, v: 0.68, radius: 0.1,
                                            colors: [NSColor(calibratedRed: 0.12, green: 0.05, blue: 0.2, alpha: 1)], offset: 0.12))
+        restGlow = 0.16
         fogColor = NSColor(calibratedRed: 0.03, green: 0.055, blue: 0.12, alpha: 1)
         fogStart = 25
         fogEnd = 190
