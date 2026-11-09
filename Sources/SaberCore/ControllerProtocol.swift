@@ -20,11 +20,44 @@ public enum ControllerButton: UInt8, Sendable {
     case next = 3
 }
 
+/// What the controller app runs on, and how the player wants to use it. Sent with `hello`.
+public struct ControllerDevice: Equatable, Sendable {
+    public enum Kind: UInt8, Sendable {
+        case other = 0, iPhone = 1, iPad = 2
+
+        /// "iPhone", "iPad", or a generic name.
+        public var title: String {
+            switch self {
+            case .iPhone: return "iPhone"
+            case .iPad: return "iPad"
+            case .other: return "iOS device"
+            }
+        }
+        /// SF Symbol for the device.
+        public var symbol: String {
+            switch self {
+            case .iPad: return "ipad"
+            default: return "iphone"
+            }
+        }
+    }
+
+    public var kind: Kind
+    /// Stable for each install of the app, so the Mac recognises the device when it reconnects.
+    public var id: String
+    /// False when the player chose "Remote only" on the device: it sends no motion.
+    public var wantsSaber: Bool
+
+    public init(kind: Kind, id: String, wantsSaber: Bool = true) {
+        self.kind = kind; self.id = id; self.wantsSaber = wantsSaber
+    }
+}
+
 public enum ControllerMessage: Equatable, Sendable {
     /// Phone → Mac: one motion sample.
     case motion(sequence: UInt32, attitude: Quat, gravity: Vec3)
-    /// Phone → Mac: sent on connect and every few seconds.
-    case hello(name: String)
+    /// Phone → Mac: sent on connect and every second or so. `device` is nil from older apps.
+    case hello(name: String, device: ControllerDevice? = nil)
     /// Phone → Mac: a button on the phone was tapped.
     case button(ControllerButton)
     /// Mac → Phone: which saber the phone drives (-1 none, 0 left, 1 right) and whether it is calibrated.
@@ -53,9 +86,15 @@ public enum ControllerMessage: Equatable, Sendable {
             w.u32(seq)
             w.f32(Float(q.x)); w.f32(Float(q.y)); w.f32(Float(q.z)); w.f32(Float(q.w))
             w.f32(Float(g.x)); w.f32(Float(g.y)); w.f32(Float(g.z))
-        case let .hello(name):
+        case let .hello(name, device):
             w.u8(Kind.hello.rawValue)
             w.string(name)
+            // Older Macs stop reading after the name, so the device info can follow it.
+            if let device {
+                w.u8(device.kind.rawValue)
+                w.string(device.id)
+                w.u8(device.wantsSaber ? 1 : 0)
+            }
         case let .button(b):
             w.u8(Kind.button.rawValue)
             w.u8(b.rawValue)
@@ -95,7 +134,11 @@ public enum ControllerMessage: Equatable, Sendable {
             return .motion(sequence: seq, attitude: q, gravity: Vec3(Double(gx), Double(gy), Double(gz)))
         case .hello:
             guard let name = r.string() else { return nil }
-            return .hello(name: name)
+            var device: ControllerDevice?
+            if let k = r.u8(), let id = r.string(), let flags = r.u8() {
+                device = ControllerDevice(kind: ControllerDevice.Kind(rawValue: k) ?? .other, id: id, wantsSaber: flags & 1 != 0)
+            }
+            return .hello(name: name, device: device)
         case .button:
             guard let b = r.u8(), let button = ControllerButton(rawValue: b) else { return nil }
             return .button(button)
@@ -143,8 +186,19 @@ public struct RemoteState: Codable, Equatable, Sendable {
             public var live: Bool
             public var progress: Double
             public var done: Bool
-            public init(id: String, name: String, live: Bool, progress: Double, done: Bool) {
+            /// SF Symbol for the device. Optional so older Macs decode.
+            public var symbol: String?
+            /// The hand this device will drive (0 left, 1 right), or nil if it won't be a saber.
+            public var hand: Int?
+            /// Whether the player has this device switched on as a saber (it can be turned off
+            /// with `setDeviceUsed`). Nil from older Macs.
+            public var used: Bool?
+            /// Why the device isn't a saber, when it isn't (e.g. "Not used in AirPod + iPhone").
+            public var note: String?
+            public init(id: String, name: String, live: Bool, progress: Double, done: Bool,
+                        symbol: String? = nil, hand: Int? = nil, used: Bool? = nil, note: String? = nil) {
                 self.id = id; self.name = name; self.live = live; self.progress = progress; self.done = done
+                self.symbol = symbol; self.hand = hand; self.used = used; self.note = note
             }
         }
         /// The guided closed-case connection (only when the AirPods are held in their case).
@@ -251,6 +305,22 @@ public struct RemoteState: Codable, Equatable, Sendable {
         public init() {}
     }
 
+    /// One saber of the current setup: which device drives which hand.
+    public struct Saber: Codable, Equatable, Sendable, Identifiable {
+        /// 0 = left, 1 = right.
+        public var hand: Int
+        /// The device's name, e.g. "Tom's iPad", "AirPod" or "DualSense".
+        public var device: String
+        /// SF Symbol for the device.
+        public var symbol: String
+        /// Calibrated and ready to play (otherwise it's the planned setup).
+        public var ready: Bool
+        public var id: Int { hand }
+        public init(hand: Int, device: String, symbol: String, ready: Bool) {
+            self.hand = hand; self.device = device; self.symbol = symbol; self.ready = ready
+        }
+    }
+
     public var screen: Screen = .loading
     public var loadingProgress = 0.0
     public var songTitle = ""
@@ -265,6 +335,11 @@ public struct RemoteState: Codable, Equatable, Sendable {
     public var anyCalibrated = false
     /// Whether the phone drives a saber in the current input mode (otherwise it is only a remote).
     public var phoneIsSaber = false
+    /// Which device drives each hand (calibrated sabers, or the planned setup before calibrating).
+    /// Optional so older Macs decode.
+    public var sabers: [Saber]?
+    /// Whether `swapHands` would change anything.
+    public var canSwapHands: Bool?
     public var mapStats = ""
     public var best: String?
     public var demo = false
@@ -304,6 +379,10 @@ public enum RemoteCommand: Codable, Equatable, Sendable {
     case pause, resume, restart, quitToMenu, recenter
     // Calibration
     case beginCalibration, restartCalibration, finishCalibration, calibrationPlayNow, useMouseInstead
+    /// Swaps which hand each device drives.
+    case swapHands
+    /// Switches a device (a `Calibration.Stream` id) on or off as a saber.
+    case setDeviceUsed(String, Bool)
     /// Moves calibration on to the next pose once the current one is captured.
     case calibrationNext
     // The closed AirPods case

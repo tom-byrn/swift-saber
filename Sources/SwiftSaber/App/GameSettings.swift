@@ -2,39 +2,64 @@ import Foundation
 import SaberCore
 
 enum InputMode: String, Codable, CaseIterable, Identifiable {
+    /// Uses whatever is connected: the first two motion devices become the sabers.
+    case automatic
     case airpodAndPhone
-    case airpods
+    case twoPhones
     case phone
+    case airpods
+    case controllers
     case airpodAndMouse
     case mouse
 
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .airpodAndPhone: return "AirPod + iPhone"
+        case .automatic: return "Automatic"
+        case .airpodAndPhone: return "AirPod + iPhone / iPad"
+        case .twoPhones: return "Two iPhones / iPads"
+        case .phone: return "iPhone / iPad only"
         case .airpods: return "AirPod only"
-        case .phone: return "iPhone only"
+        case .controllers: return "Game controllers"
         case .airpodAndMouse: return "AirPod + Mouse"
         case .mouse: return "Mouse / Trackpad"
         }
     }
     var detail: String {
         switch self {
+        case .automatic:
+            return "Uses whatever you connect: AirPods, iPhones and iPads running Swift Saber, or motion game controllers. Two devices give you two sabers. Nothing connected? The mouse works."
         case .airpodAndPhone:
-            return "Two sabers: an AirPod in your main hand, your iPhone (running Swift Saber) in the other. The phone buzzes on every cut."
+            return "Two sabers: an AirPod in your main hand, an iPhone or iPad (running Swift Saber) in the other. iPhones buzz on every cut."
+        case .twoPhones:
+            return "Two sabers from two iPhones or iPads running Swift Saber, say yours and a family member's. Same Wi-Fi as this Mac."
+        case .phone:
+            return "One saber driven by an iPhone or iPad running the Swift Saber app."
         case .airpods:
             return "One saber. AirPods stream motion from one bud at a time, so hold a single bud."
-        case .phone:
-            return "One saber driven by your iPhone running the Swift Saber app."
+        case .controllers:
+            return "One or two game controllers with motion sensors, paired with this Mac: DualSense, DualShock 4 or Joy-Con. A Joy-Con pair goes L in the left hand, R in the right."
         case .airpodAndMouse:
             return "An AirPod drives your main hand, the mouse or trackpad drives the other saber."
         case .mouse:
             return "Aim and swing with the pointer. Great for testing without any devices."
         }
     }
-    var usesAirPods: Bool { self == .airpods || self == .airpodAndPhone || self == .airpodAndMouse }
-    var usesPhone: Bool { self == .phone || self == .airpodAndPhone }
-    var usesMotionDevices: Bool { usesAirPods || usesPhone }
+    var usesAirPods: Bool { [.automatic, .airpods, .airpodAndPhone, .airpodAndMouse].contains(self) }
+    var usesPhone: Bool { [.automatic, .phone, .airpodAndPhone, .twoPhones].contains(self) }
+    var usesControllers: Bool { self == .automatic || self == .controllers }
+    var usesMouse: Bool { self == .mouse || self == .airpodAndMouse }
+    var usesMotionDevices: Bool { usesAirPods || usesPhone || usesControllers }
+
+    /// Whether `device` can be a saber in this mode.
+    func allows(_ device: SaberDevice) -> Bool {
+        switch device {
+        case .airPod, .airPodCase: return usesAirPods
+        case .iOS1, .iOS2: return usesPhone
+        case .controller1, .controller2: return usesControllers
+        case .mouse: return self == .automatic || usesMouse
+        }
+    }
 }
 
 /// How the AirPod saber is held.
@@ -62,8 +87,9 @@ enum AirPodGrip: String, Codable, CaseIterable, Identifiable {
 }
 
 struct GameSettings: Codable, Equatable {
-    var inputMode: InputMode = .airpodAndPhone
-    /// Hand that holds the AirPod (or the only device). The iPhone / mouse takes the other hand.
+    var inputMode: InputMode = .automatic
+    /// The main hand: it holds the first device (the AirPod, or the only device); the second
+    /// device takes the other hand. "Swap hands" flips it.
     var primaryHand: Hand = .right
     /// Swap which bud drives which saber in two-saber mode.
     var swapAirPods = false

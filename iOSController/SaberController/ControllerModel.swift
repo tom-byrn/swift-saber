@@ -3,7 +3,7 @@ import CoreMotion
 import Network
 import UIKit
 
-/// Streams the iPhone's motion to the Swift Saber Mac app over the local network.
+/// Streams the iPhone's (or iPad's) motion to the Swift Saber Mac app over the local network.
 ///
 /// 1. Browses Bonjour for `_swiftsaber._udp` (the Mac advertises it while the game runs).
 /// 2. Opens a UDP "connection" to the first Mac found (or the one the user picks).
@@ -33,6 +33,28 @@ final class ControllerModel: ObservableObject {
     @Published private(set) var lastHit: Date = .distantPast
     /// The game's current screen and values; nil until a Mac that supports remote control answers.
     @Published private(set) var remote: RemoteState?
+    /// False when the player chose "Remote only": no motion is sent and the device just drives
+    /// the menus. Remembered between launches.
+    @Published private(set) var wantsSaber: Bool = UserDefaults.standard.object(forKey: ControllerModel.wantsSaberKey) as? Bool ?? true
+
+    private static let wantsSaberKey = "SaberController.wantsSaber"
+
+    /// iPhone or iPad.
+    static let kind: ControllerDevice.Kind = UIDevice.current.userInterfaceIdiom == .pad ? .iPad : .iPhone
+    /// What to call this device in instructions: "phone" or "iPad".
+    static var deviceWord: String { kind == .iPad ? "iPad" : "phone" }
+    /// Identifies this install to the Mac, so it gets its saber (and calibration) back after reconnecting.
+    private static let deviceID: String = {
+        let key = "SaberController.deviceID"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }()
+
+    private var hello: ControllerMessage {
+        .hello(name: UIDevice.current.name, device: ControllerDevice(kind: Self.kind, id: Self.deviceID, wantsSaber: wantsSaber))
+    }
     /// Preview only: freeze the hold-to-pause ring part-way (for screenshots).
     private(set) var previewHoldProgress: Double?
 
@@ -88,7 +110,7 @@ final class ControllerModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = true
         heavy.prepare()
         rigid.prepare()
-        startMotion()
+        if wantsSaber { startMotion() }
         startBrowsing()
         watchdog?.invalidate()
         watchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
@@ -161,7 +183,7 @@ final class ControllerModel: ObservableObject {
             guard let self, let c else { return }
             switch state {
             case .ready:
-                self.send(.hello(name: UIDevice.current.name))
+                self.send(self.hello)
             case .failed, .cancelled:
                 DispatchQueue.main.async {
                     if self.connection === c {
@@ -247,7 +269,7 @@ final class ControllerModel: ObservableObject {
             connect(to: first)
         }
         // Periodic hello so the Mac shows our name even if the first one was lost.
-        if case .connected = link { send(.hello(name: UIDevice.current.name)) }
+        if case .connected = link { send(hello) }
     }
 
     // MARK: Sending
@@ -256,6 +278,21 @@ final class ControllerModel: ObservableObject {
         netQueue.async { [weak self] in
             self?.connection?.send(content: m.encoded(), completion: .idempotent)
         }
+    }
+
+    /// Switches between swinging this device as a saber and using it only as a remote.
+    func setWantsSaber(_ on: Bool) {
+        guard on != wantsSaber else { return }
+        wantsSaber = on
+        UserDefaults.standard.set(on, forKey: Self.wantsSaberKey)
+        light.impactOccurred(intensity: 0.7)
+        if on {
+            startMotion()
+        } else {
+            motion.stopDeviceMotionUpdates()
+            hand = -1
+        }
+        send(hello)
     }
 
     func tap(_ b: ControllerButton) {
@@ -344,6 +381,9 @@ final class ControllerModel: ObservableObject {
             }
         case .setInputMode(let m): s.settings.inputMode = m
         case .setPrimaryHand(let h): s.settings.primaryHand = h
+        case let .setDeviceUsed(id, used):
+            guard let i = s.calibration.streams.firstIndex(where: { $0.id == id }) else { return }
+            s.calibration.streams[i].used = used
         case .setAudioOutput(let o): s.settings.audioOutput = o
         default: return
         }
@@ -366,6 +406,9 @@ final class ControllerModel: ObservableObject {
         s.sabersReady = 2
         s.anyCalibrated = true
         s.phoneIsSaber = true
+        s.sabers = [.init(hand: 0, device: "Tom's iPad", symbol: "ipad", ready: true),
+                    .init(hand: 1, device: "Left AirPod", symbol: "airpodpro.left", ready: true)]
+        s.canSwapHands = true
         s.mapStats = "412 blocks · 18 bombs · 2.9 / sec"
         s.best = "184 220 · A"
         s.countdown = 2
@@ -378,15 +421,16 @@ final class ControllerModel: ObservableObject {
         c.phase = .calibrating
         c.title = "Now point at the ceiling"
         c.detail = "Raise both fists so they point straight up, without twisting your wrists. Hold still."
-        c.streams = [.init(id: "1", name: "Left AirPod", live: true, progress: 1, done: true),
-                     .init(id: "3", name: "iPhone", live: true, progress: 0.55, done: false)]
+        c.streams = [.init(id: "1", name: "Left AirPod", live: true, progress: 1, done: true, symbol: "airpodpro.left", hand: 1),
+                     .init(id: "3", name: "Tom's iPad", live: true, progress: 0.55, done: false, symbol: "ipad", hand: 0)]
         s.calibration = c
         var g = RemoteState.Settings()
-        g.inputMode = "airpodAndPhone"
-        g.inputModes = [.init(id: "airpodAndPhone", title: "AirPod + iPhone"), .init(id: "airpods", title: "AirPod only"),
-                        .init(id: "phone", title: "iPhone only"), .init(id: "airpodAndMouse", title: "AirPod + Mouse"),
-                        .init(id: "mouse", title: "Mouse / Trackpad")]
-        g.inputDetail = "Two sabers: an AirPod in your main hand, your iPhone (running Swift Saber) in the other. The phone buzzes on every cut."
+        g.inputMode = "automatic"
+        g.inputModes = [.init(id: "automatic", title: "Automatic"), .init(id: "airpodAndPhone", title: "AirPod + iPhone / iPad"),
+                        .init(id: "twoPhones", title: "Two iPhones / iPads"), .init(id: "phone", title: "iPhone / iPad only"),
+                        .init(id: "airpods", title: "AirPod only"), .init(id: "controllers", title: "Game controllers"),
+                        .init(id: "airpodAndMouse", title: "AirPod + Mouse"), .init(id: "mouse", title: "Mouse / Trackpad")]
+        g.inputDetail = "Uses whatever you connect: AirPods, iPhones and iPads running Swift Saber, or motion game controllers. Two devices give you two sabers. Nothing connected? The mouse works."
         g.primaryHand = 0
         g.sensitivity = 1.15
         g.airPodLatencyMs = 45

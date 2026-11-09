@@ -25,6 +25,8 @@ targets.append(
             .linkedFramework("CoreAudio"),
             .linkedFramework("AudioToolbox"),
             .linkedFramework("CoreBluetooth"),
+            .linkedFramework("GameController"),
+            .linkedFramework("CoreHaptics"),
         ]
     )
 )

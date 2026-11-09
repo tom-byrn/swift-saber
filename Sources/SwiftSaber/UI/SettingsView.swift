@@ -42,19 +42,26 @@ struct SettingsView: View {
                             }
                         }
 
-                        Picker("AirPod hand", selection: binding(\.primaryHand)) {
+                        Picker("Main hand", selection: binding(\.primaryHand)) {
                             Text("Left").tag(Hand.left)
                             Text("Right").tag(Hand.right)
                         }
                         .pickerStyle(.segmented)
+                        Text(model.settings.inputMode.usesAirPods && model.settings.inputMode != .automatic
+                             ? "The AirPod (or your only device) goes in your main hand; the second device in the other."
+                             : "Your first device goes in your main hand; the second device in the other. Saber Setup shows which is which.")
+                            .font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
 
                         SliderRow(title: "Saber sensitivity", value: binding(\.sensitivity), range: 0.6...2.0,
                                   format: { String(format: "%.2f×", $0) })
-                        SliderRow(title: "AirPods motion delay", value: binding(\.airPodLatencyMs), range: 0...150,
-                                  format: { "\(Int($0)) ms" })
+                        if model.settings.inputMode.usesAirPods {
+                            SliderRow(title: "AirPods motion delay", value: binding(\.airPodLatencyMs), range: 0...150,
+                                      format: { "\(Int($0)) ms" })
+                        }
                         Toggle("Lenient cut angles", isOn: binding(\.lenientCuts))
                         Toggle("Auto-recenter when a song starts", isOn: binding(\.autoRecenter))
-                        if model.settings.airPodGrip == .bud {
+                        if model.settings.inputMode.usesAirPods && model.settings.airPodGrip == .bud {
                             Toggle("Keep AirPods awake (silent stream)", isOn: binding(\.keepAirPodsAwake))
                         }
                     }

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import QuartzCore
+import Combine
 import SaberCore
 
 enum Screen: Equatable {
@@ -46,11 +47,17 @@ final class AppModel: ObservableObject {
     let renderer: GameRenderer
     let motion: HeadphoneMotionService
     let phone: PhoneControllerServer
+    /// Game controllers with motion sensors (DualSense, DualShock 4, Joy-Con).
+    let controllers: GameControllerService
+    /// Devices the player switched off as sabers in Saber Setup (for this session).
+    @Published private(set) var excludedDevices: Set<SaberDevice> = []
     /// The closed AirPods case as a saber (used when `settings.airPodGrip == .closedCase`).
     let airPodsCase: AirPodsCaseSession
     lazy var calibration = CalibrationModel(hub: hub)
 
     private var monitors: [Any] = []
+    private var cancellables: [AnyCancellable] = []
+    private var lastCalibratedStreams: [StreamID] = []
     private var statusTimer: Timer?
     private var countdownTimer: Timer?
     private var toastWork: DispatchWorkItem?
@@ -69,6 +76,7 @@ final class AppModel: ObservableObject {
         renderer = GameRenderer(input: hub, audio: audio, stage: loaded.stage, colors: loaded.effectiveColors)
         motion = HeadphoneMotionService(hub: hub)
         phone = PhoneControllerServer(hub: hub)
+        controllers = GameControllerService(hub: hub)
         airPodsCase = AirPodsCaseSession(hub: hub)
         // Put back any audio devices a session moved off the AirPods before a crash or force quit.
         CaseAudioGuard.shared.restoreAfterCrash()
@@ -78,13 +86,27 @@ final class AppModel: ObservableObject {
             if snap != self.hud { self.hud = snap }
         }
         renderer.onGameOver = { [weak self] r in self?.gameOver(r) }
-        // Render thread: buzz the phone when its saber hits something.
-        let hub = self.hub, phone = self.phone
+        // Render thread: buzz the phone (or rumble the controller) when its saber hits something.
+        let hub = self.hub, phone = self.phone, pads = self.controllers
         renderer.onSaberContact = { hand, strength in
-            if case .stream(.phone)? = hub.currentAssignment()[hand] { phone.sendHaptic(strength) }
+            guard case .stream(let id)? = hub.currentAssignment()[hand] else { return }
+            if id.isPhone { phone.sendHaptic(strength, slot: id) } else if id.isController { pads.sendHaptic(strength, slot: id) }
         }
         phone.onButton = { [weak self] b in self?.phoneButton(b) }
         phone.onCommand = { [weak self] c in self?.handleRemote(c) }
+        phone.onSlotOwnerChanged = { [weak self] slot in
+            // A different iPhone / iPad took this saber: the old device's calibration doesn't fit it.
+            guard let self else { return }
+            self.hub.setCalibration(nil, for: slot)
+            self.updateAssignment()
+        }
+        controllers.onButton = { [weak self] b in self?.controllerButton(b) }
+        // Device lists live on the services; refresh the screens when they change.
+        for publisher in [phone.objectWillChange, controllers.objectWillChange] {
+            cancellables.append(publisher.sink { [weak self] _ in
+                DispatchQueue.main.async { self?.objectWillChange.send() }
+            })
+        }
         audio.onConfigurationChange = { [weak self] in self?.audioConfigurationChanged() }
 
         calibration.onStepCompleted = { [weak self] in self?.audio.play(.calibrationStep, volume: 0.8) }
@@ -116,6 +138,12 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             let infos = self.hub.streamInfos()
             if infos != self.streamInfos { self.streamInfos = infos }
+            // A device disconnecting can drop its calibration; keep the sabers in step.
+            let calibrated = self.calibratedStreams
+            if calibrated != self.lastCalibratedStreams {
+                self.lastCalibratedStreams = calibrated
+                self.updateAssignment()
+            }
             // The phone is always a remote, even when it isn't one of the sabers.
             self.sendPhoneStatus()
             self.sendPhoneState()
@@ -169,10 +197,12 @@ final class AppModel: ObservableObject {
             hub.setCalibration(nil, for: .airPodCase)
             showToast("Case saber flipped — calibrate it again in Set Up Sabers")
         }
-        // Always listen for the phone so it can drive the menus in every input mode;
-        // its motion only reaches the sabers when the input mode uses it.
+        // Always listen for phones and tablets so they can drive the menus in every input mode;
+        // their motion only reaches the sabers when the input mode uses them.
         phone.forwardsMotion = settings.inputMode.usesPhone
         phone.start()
+        // Controllers' buttons work the menus too, but only motion modes need them listening.
+        if settings.inputMode.usesControllers { controllers.start() } else { controllers.stop() }
         if previous?.keepAirPodsAwake != settings.keepAirPodsAwake || previous?.inputMode != settings.inputMode
             || previous?.airPodGrip != settings.airPodGrip {
             // A case session keeps its own silent stream going and holds sound off the AirPods.
@@ -209,8 +239,10 @@ final class AppModel: ObservableObject {
             guard let self, self.screen == .calibration, self.calibration.phase == .detecting,
                   self.airPodsCase.stage == .ready else { return }
             let live = self.hub.liveStreams()
-            guard live.contains(.airPodCase), !self.settings.inputMode.usesPhone || live.contains(.phone) else { return }
-            self.calibration.begin()
+            guard live.contains(.airPodCase) else { return }
+            // In AirPod + iPhone mode, wait for the phone too.
+            if self.settings.inputMode == .airpodAndPhone && !live.contains(where: \.isPhone) { return }
+            self.beginCalibration()
         }
     }
 
@@ -230,47 +262,257 @@ final class AppModel: ObservableObject {
         StreamID.allCases.filter { hub.calibration(for: $0) != nil }
     }
 
-    var calibratedAirPods: [StreamID] { calibratedStreams.filter { $0.isAirPod } }
-    var phoneCalibrated: Bool { hub.calibration(for: .phone) != nil }
-
     /// Hands that currently have an input source.
     var availableHands: [Hand] {
         Array(hub.currentAssignment().keys).sorted { $0.rawValue < $1.rawValue }
     }
 
-    var needsCalibration: Bool {
-        (settings.inputMode.usesAirPods && calibratedAirPods.isEmpty)
-            || (settings.inputMode.usesPhone && !phoneCalibrated)
+    /// The AirPods device for the chosen grip (a bud, or the closed case).
+    private var podDevice: SaberDevice { settings.airPodGrip == .closedCase ? .airPodCase : .airPod }
+
+    /// Whether `device` may be a saber with the current input mode and AirPods grip.
+    func canUse(_ device: SaberDevice) -> Bool {
+        if device.isAirPod && device != podDevice { return false }
+        return settings.inputMode.allows(device)
     }
 
-    func updateAssignment() {
-        var a: [Hand: SaberSource] = [:]
-        let primary = settings.primaryHand
-        let pods = calibratedAirPods
+    /// Devices behind `streams` that may be sabers (not switched off by the player).
+    private func usableDevices(_ streams: [StreamID]) -> Set<SaberDevice> {
+        Set(streams.map(\.device)).filter { canUse($0) && !excludedDevices.contains($0) }
+    }
+
+    /// Devices streaming motion right now that could be sabers.
+    var liveDevices: Set<SaberDevice> { usableDevices(hub.liveStreams()) }
+    /// Calibrated devices that could be sabers.
+    var calibratedDevices: Set<SaberDevice> { usableDevices(calibratedStreams) }
+
+    /// Which device drives which hand, given the devices on hand. The first device takes the
+    /// main hand; "Swap hands" flips `primaryHand`.
+    func plan(_ present: Set<SaberDevice>, primary: Hand? = nil) -> [Hand: SaberDevice] {
+        let primary = primary ?? settings.primaryHand
+        let pod = podDevice
+        let phones = [SaberDevice.iOS1, .iOS2].filter(present.contains)
+        let pads = [SaberDevice.controller1, .controller2].filter(present.contains)
+        func assign(_ list: [SaberDevice]) -> [Hand: SaberDevice] {
+            SaberAssignment.assign(list.map { d in
+                SaberCandidate(d, preferredHand: d.streams.first.flatMap { controllers.pad(for: $0)?.preferredHand })
+            }, primary: primary)
+        }
+        var a: [Hand: SaberDevice] = [:]
         switch settings.inputMode {
+        case .automatic:
+            a = assign((present.contains(pod) ? [pod] : []) + phones + pads)
+            if a.isEmpty { a[primary] = .mouse }
+        case .airpodAndPhone:
+            if present.contains(pod) { a[primary] = pod }
+            if let p = phones.first { a[primary.other] = p }
+        case .twoPhones:
+            a = assign(phones)
+        case .phone:
+            if let p = phones.first { a[primary] = p }
+        case .airpods:
+            if present.contains(pod) { a[primary] = pod }
+        case .controllers:
+            a = assign(pads)
+        case .airpodAndMouse:
+            if present.contains(pod) { a[primary] = pod }
+            a[primary.other] = .mouse
         case .mouse:
             a[primary] = .mouse
-        case .airpods:
+        }
+        return a
+    }
+
+    /// The sabers in play right now.
+    var assignedDevices: [Hand: SaberDevice] { hub.currentAssignment().mapValues(\.device) }
+    /// The sabers that calibrating now would give (from the devices streaming at the moment).
+    var plannedDevices: [Hand: SaberDevice] { plan(liveDevices) }
+
+    /// Which device drives each hand, for the screens: during setup (or before anything is
+    /// calibrated) the planned sabers, otherwise the ones in play. `ready` = calibrated and live.
+    func saberSummary() -> [(hand: Hand, device: SaberDevice, ready: Bool)] {
+        let assigned = assignedDevices
+        let setup = screen == .calibration && calibration.phase == .detecting
+        let showPlan = setup || assigned.values.allSatisfy { $0 == .mouse }
+        let planned = plannedDevices
+        let map = showPlan && planned.values.contains(where: { $0 != .mouse }) ? planned : assigned
+        return Hand.allCases.compactMap { h in map[h].map { (hand: h, device: $0, ready: assigned[h] == $0) } }
+    }
+
+    /// Whether "Swap hands" would change anything.
+    var canSwapHands: Bool {
+        let devices = calibratedDevices.union(liveDevices)
+        return plan(devices, primary: settings.primaryHand.other) != plan(devices)
+    }
+
+    /// Swaps which hand each device drives.
+    func swapHands() {
+        settings.primaryHand = settings.primaryHand.other
+        audio.play(.click, volume: 0.5)
+        showToast(handsToast())
+    }
+
+    private func handsToast() -> String {
+        let s = saberSummary()
+        guard !s.isEmpty else { return "Main hand: \(settings.primaryHand.name.lowercased())" }
+        return s.map { "\($0.hand.name): \(deviceName($0.device))" }.joined(separator: " · ")
+    }
+
+    /// Switches a device on or off as a saber.
+    func setDevice(_ device: SaberDevice, used: Bool) {
+        if used { excludedDevices.remove(device) } else { excludedDevices.insert(device) }
+        updateAssignment()
+    }
+
+    /// The input mode wants motion devices but none is calibrated yet.
+    var needsCalibration: Bool {
+        guard settings.inputMode.usesMotionDevices, !usesMotionSaber else { return false }
+        // Automatic with nothing connected plays with the mouse.
+        return !(settings.inputMode == .automatic && liveDevices.isEmpty)
+    }
+
+    /// Whether a motion device (not the mouse) drives a saber.
+    var usesMotionSaber: Bool { assignedDevices.values.contains(where: \.needsCalibration) }
+
+    func updateAssignment() {
+        var a = plan(calibratedDevices).mapValues(\.source)
+        if settings.inputMode == .airpods, settings.airPodGrip == .bud, !excludedDevices.contains(.airPod) {
+            let pods = calibratedStreams
             if pods.contains(.left) && pods.contains(.right) && bothBudsStreaming {
                 // Only if this hardware really streams both buds at once.
                 a[.left] = .stream(settings.swapAirPods ? .right : .left)
                 a[.right] = .stream(settings.swapAirPods ? .left : .right)
-            } else if !pods.isEmpty {
-                a[primary] = .anyAirPod
             }
-        case .airpodAndPhone:
-            if !pods.isEmpty { a[primary] = .anyAirPod }
-            if phoneCalibrated { a[primary.other] = .stream(.phone) }
-        case .phone:
-            if phoneCalibrated { a[primary] = .stream(.phone) }
-        case .airpodAndMouse:
-            if !pods.isEmpty { a[primary] = .anyAirPod }
-            a[primary.other] = .mouse
         }
-        hub.setAssignment(a)
+        if a != hub.currentAssignment() { hub.setAssignment(a) }
         let hands = a.count
         if hands < 2 { selectedMode = .oneSaber } else if selectedMode == .oneSaber && screen != .levelSelect { selectedMode = .twoSabers }
+        updateControllerLights()
         objectWillChange.send()
+    }
+
+    /// Light bars show the colour of the saber each controller drives.
+    private func updateControllerLights() {
+        let colors = settings.effectiveColors
+        let hands = hub.currentAssignment()
+        for slot in StreamID.controllers {
+            let hand = hands.first { $0.value == .stream(slot) }?.key
+            controllers.setLight(hand.map { $0 == .left ? colors.leftSaber : colors.rightSaber }, slot: slot)
+        }
+    }
+
+    // MARK: Devices
+
+    /// What Saber Setup says about the devices it can see.
+    func setupHint() -> String {
+        CalibrationModel.setupHint(mode: settings.inputMode, planned: plannedDevices, live: liveDevices,
+                                   grip: settings.airPodGrip, name: deviceName)
+    }
+
+    /// The name to show for a device, e.g. "Tom's iPad", "Right AirPod" or "DualSense".
+    func deviceName(_ d: SaberDevice) -> String {
+        switch d {
+        case .airPod:
+            let live = hub.liveStreams()
+            if live.contains(.left) && !live.contains(.right) { return StreamID.left.label }
+            if live.contains(.right) && !live.contains(.left) { return StreamID.right.label }
+            return "AirPod"
+        case .airPodCase: return StreamID.airPodCase.label
+        case .iOS1, .iOS2: return d.streams.first.flatMap { phone.device(for: $0)?.name } ?? "iPhone / iPad"
+        case .controller1, .controller2: return d.streams.first.flatMap { controllers.pad(for: $0)?.name } ?? "Controller"
+        case .mouse: return "Mouse / Trackpad"
+        }
+    }
+
+    /// The name for one motion stream (AirPod buds by side).
+    func streamName(_ id: StreamID) -> String {
+        id.device == .airPod ? id.label : deviceName(id.device)
+    }
+
+    func deviceSymbol(_ d: SaberDevice) -> String {
+        switch d {
+        case .airPod: return "airpodpro.right"
+        case .airPodCase: return StreamID.airPodCase.symbol
+        case .iOS1, .iOS2: return d.streams.first.flatMap { phone.device(for: $0)?.symbol } ?? "iphone"
+        case .controller1, .controller2: return "gamecontroller.fill"
+        case .mouse: return "computermouse.fill"
+        }
+    }
+
+    func streamSymbol(_ id: StreamID) -> String {
+        id.device == .airPod ? id.symbol : deviceSymbol(id.device)
+    }
+
+    /// One line of the Saber Setup device list.
+    struct DeviceRow: Identifiable, Equatable {
+        var id: String
+        /// Nil for things that can't be sabers (remote-only phones, controllers without motion).
+        var device: SaberDevice?
+        var name: String
+        var symbol: String
+        var live: Bool
+        var calibrated: Bool
+        /// The hand it will drive.
+        var hand: Hand?
+        /// Switched on as a saber.
+        var used: Bool
+        /// Why it isn't a saber, when it isn't.
+        var note: String?
+        /// Whether the player can switch it on or off (it can be a saber in this input mode).
+        var canToggle = false
+    }
+
+    /// Everything connected, and what each device is for.
+    func deviceRows() -> [DeviceRow] {
+        let infos = hub.streamInfos()
+        let live = Set(infos.filter(\.isLive).map { $0.id.device })
+        let calibrated = Set(calibratedStreams.map(\.device))
+        let planned = plannedDevices
+        let mode = settings.inputMode
+        var rows: [DeviceRow] = []
+        for d in SaberDevice.allCases where d != .mouse {
+            if d.isAirPod && d != podDevice { continue }
+            let connected: Bool
+            switch d {
+            case .iOS1, .iOS2: connected = d.streams.first.flatMap { phone.device(for: $0) } != nil
+            case .controller1, .controller2: connected = d.streams.first.flatMap { controllers.pad(for: $0) } != nil
+            default: connected = false
+            }
+            // AirPods are listed once they've streamed; phones and controllers while connected
+            // (or still calibrated, so a dropped connection is visible).
+            let seen = d.isAirPod && infos.contains { $0.id.device == d }
+            guard connected || seen || live.contains(d) || calibrated.contains(d) else { continue }
+            let hand = planned.first { $0.value == d }?.key ?? assignedDevices.first { $0.value == d }?.key
+            var note: String?
+            if !settings.inputMode.allows(d) {
+                note = "Not used in \(mode.title)"
+            } else if excludedDevices.contains(d) {
+                note = "Switched off"
+            } else if !live.contains(d) {
+                note = calibrated.contains(d) ? "Calibrated · not streaming" : "Not streaming yet"
+            } else if hand == nil {
+                note = "Spare: two sabers are already covered"
+            }
+            rows.append(DeviceRow(id: d.rawValue, device: d, name: deviceName(d), symbol: deviceSymbol(d),
+                                  live: live.contains(d), calibrated: calibrated.contains(d), hand: hand,
+                                  used: !excludedDevices.contains(d), note: note, canToggle: settings.inputMode.allows(d)))
+        }
+        if planned.values.contains(.mouse) || (assignedDevices.values.contains(.mouse) && !(screen == .calibration)) {
+            let hand = planned.first { $0.value == .mouse }?.key ?? assignedDevices.first { $0.value == .mouse }?.key
+            rows.append(DeviceRow(id: SaberDevice.mouse.rawValue, device: nil, name: deviceName(.mouse), symbol: deviceSymbol(.mouse),
+                                  live: true, calibrated: true, hand: hand, used: true,
+                                  note: mode == .automatic ? "Until a motion device is calibrated" : nil))
+        }
+        for p in phone.devices where p.slot == nil {
+            rows.append(DeviceRow(id: "remote:" + p.id, device: nil, name: p.name, symbol: p.symbol, live: true, calibrated: false,
+                                  hand: nil, used: false,
+                                  note: p.wantsSaber ? "Remote (two \(p.kind.title)s are already sabers)" : "Remote only (set on the \(p.kind.title))"))
+        }
+        for name in controllers.withoutMotion {
+            rows.append(DeviceRow(id: "pad:" + name, device: nil, name: name, symbol: "gamecontroller", live: true, calibrated: false,
+                                  hand: nil, used: false, note: "No motion sensors: works the menus only"))
+        }
+        return rows
     }
 
     // MARK: Calibration
@@ -282,9 +524,10 @@ final class AppModel: ObservableObject {
     }
 
     func openCalibration() {
-        if !settings.inputMode.usesMotionDevices { settings.inputMode = .airpodAndPhone }
+        if !settings.inputMode.usesMotionDevices { settings.inputMode = .automatic }
         if usesHeadphoneMotion { motion.start() }
         if settings.inputMode.usesPhone { phone.start() }
+        if settings.inputMode.usesControllers { controllers.start() }
         calibration.restart()
         calibration.activate()
         screen = .calibration
@@ -299,6 +542,14 @@ final class AppModel: ObservableObject {
     /// so they are hidden until calibration is done.
     private func updateSaberVisibility() {
         renderer.setSabersHidden(screen == .calibration && calibration.phase != .done)
+    }
+
+    /// Starts calibrating every device that is about to become a saber.
+    func beginCalibration() {
+        guard calibration.phase == .detecting else { return }
+        let planned = Set(plannedDevices.values)
+        let streams = hub.liveStreams().filter { planned.contains($0.device) }
+        calibration.begin(streams: streams)
     }
 
     /// Next button (on screen, keyboard or iPhone) during calibration.
@@ -325,7 +576,7 @@ final class AppModel: ObservableObject {
         }
         switch b {
         case .next:
-            if screen == .calibration && calibration.phase == .detecting { calibration.begin() }
+            if screen == .calibration && calibration.phase == .detecting { beginCalibration() }
         case .recenter:
             recenter()
         case .pause:
@@ -340,8 +591,47 @@ final class AppModel: ObservableObject {
     }
 
     private func sendPhoneStatus() {
-        let hand = hub.currentAssignment().first { $0.value == .stream(.phone) }?.key
-        phone.sendStatus(hand: hand, calibrated: phoneCalibrated)
+        var hands: [StreamID: Hand] = [:]
+        for (hand, source) in hub.currentAssignment() {
+            if case .stream(let id) = source { hands[id] = hand }
+        }
+        phone.sendStatus(hands: hands, calibrated: Set(calibratedStreams))
+    }
+
+    // MARK: Game controllers
+
+    private func controllerButton(_ b: GameControllerService.PadButton) {
+        switch b {
+        case .menu:
+            switch screen {
+            case .playing: pauseGame()
+            case .paused: resumeGame()
+            default: break
+            }
+        case .confirm:
+            switch screen {
+            case .menu: goToLevelSelect()
+            case .levelSelect: startLevel()
+            case .paused: resumeGame()
+            case .results: restartLevel()
+            case .calibration:
+                switch calibration.phase {
+                case .detecting: beginCalibration()
+                case .calibrating: calibrationNext()
+                case .done: closeCalibration()
+                }
+            default: break
+            }
+        case .back:
+            switch screen {
+            case .levelSelect, .settings, .customize: screen = .menu
+            case .results, .paused: quitToMenu()
+            case .calibration: closeCalibration()
+            default: break
+            }
+        case .recenter:
+            if screen != .loading { recenter() }
+        }
     }
 
     func recenter() {
@@ -387,7 +677,7 @@ final class AppModel: ObservableObject {
         hud = HUDSnapshot(duration: map.duration, noFail: settings.noFail, autoplay: demo)
         results = nil
         resumingFromPause = false
-        runCountdown(message: demo ? "Autoplay demo" : (settings.autoRecenter && settings.inputMode.usesMotionDevices ? "Aim at the centre of the screen" : "Get ready"))
+        runCountdown(message: demo ? "Autoplay demo" : (settings.autoRecenter && usesMotionSaber ? "Aim at the centre of the screen" : "Get ready"))
     }
 
     private func runCountdown(message: String) {
@@ -409,7 +699,7 @@ final class AppModel: ObservableObject {
     }
 
     private func countdownFinished() {
-        if settings.autoRecenter && settings.inputMode.usesMotionDevices && !isDemo { hub.recenter() }
+        if settings.autoRecenter && usesMotionSaber && !isDemo { hub.recenter() }
         audio.play(.go, volume: 0.7)
         if resumingFromPause {
             renderer.resume()
@@ -457,7 +747,7 @@ final class AppModel: ObservableObject {
     }
 
     private func hideCursorIfNeeded(_ hide: Bool) {
-        let shouldHide = hide && (settings.inputMode == .mouse || settings.inputMode == .airpodAndMouse) && !isDemo
+        let shouldHide = hide && assignedDevices.values.contains(.mouse) && !isDemo
         if shouldHide && !cursorHidden {
             NSCursor.hide()
             cursorHidden = true
@@ -627,7 +917,7 @@ final class AppModel: ObservableObject {
             case .menu: goToLevelSelect()
             case .levelSelect: startLevel()
             case .results: restartLevel()
-            case .calibration where calibration.phase == .detecting: calibration.begin()
+            case .calibration where calibration.phase == .detecting: beginCalibration()
             case .calibration where calibration.phase == .calibrating: calibrationNext()
             case .calibration where calibration.phase == .done: closeCalibration()
             default: return false

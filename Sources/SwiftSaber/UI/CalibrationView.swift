@@ -32,6 +32,16 @@ struct CalibrationView: View {
         HStack(alignment: .top, spacing: 26) {
             Panel {
                 VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("INPUT").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
+                        Spacer()
+                        Picker("Input", selection: Binding(get: { model.settings.inputMode }, set: { model.settings.inputMode = $0 })) {
+                            ForEach(InputMode.allCases.filter(\.usesMotionDevices)) { Text($0.title).tag($0) }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 250)
+                    }
                     if mode.usesAirPods {
                         Picker("Hold the AirPods as", selection: Binding(get: { model.settings.airPodGrip },
                                                                         set: { model.settings.airPodGrip = $0 })) {
@@ -42,7 +52,7 @@ struct CalibrationView: View {
                     }
                     if usesCase {
                         CaseSetupPanel(session: model.airPodsCase, hand: model.settings.primaryHand.name.lowercased())
-                        if mode.usesPhone { Divider().overlay(Color.white.opacity(0.15)) }
+                        Divider().overlay(Color.white.opacity(0.15))
                     }
                     let steps = checklist
                     if !steps.isEmpty && !usesCase {
@@ -62,45 +72,36 @@ struct CalibrationView: View {
 
             Panel {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("MOTION STREAMS").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
+                    Text("YOUR SABERS").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5))
+                    SaberHandsView(sabers: model.saberSummary().map { (hand: $0.hand, name: model.deviceName($0.device), symbol: model.deviceSymbol($0.device)) })
+                    Button("⇄ Swap hands") { model.swapHands() }
+                        .buttonStyle(NeonButtonStyle(color: .gray, width: 330))
+                        .disabled(!model.canSwapHands)
+
+                    Text("DEVICES").font(Theme.mono(12)).foregroundStyle(.white.opacity(0.5)).padding(.top, 4)
                     if mode.usesAirPods && !usesCase { MotionStatusBanner(motion: model.motion) }
                     if mode.usesPhone { PhoneStatusBanner(phone: model.phone) }
-                    if calibration.streams.isEmpty {
+                    let rows = model.deviceRows()
+                    if rows.isEmpty {
                         HStack(spacing: 10) {
                             ProgressView().controlSize(.small)
-                            Text(usesCase ? "Waiting for the AirPods case…" : "Waiting for AirPods motion data…")
+                            Text("Looking for devices…")
                                 .font(Theme.body(14)).foregroundStyle(.white.opacity(0.7))
                         }
                     }
-                    ForEach(calibration.streams) { s in
-                        HStack {
-                            Image(systemName: s.id.symbol)
-                                .font(.system(size: 22))
-                                .foregroundStyle(s.live ? Color.green : Color.gray)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(s.id.label).font(Theme.body(15)).foregroundStyle(.white)
-                                Text(s.live ? "Streaming · \(Int(s.rate)) Hz" : "No data")
-                                    .font(Theme.body(12))
-                                    .foregroundStyle(s.live ? Color.green : Color.gray)
-                                if s.live, let r = s.reading {
-                                    Text(String(format: "yaw %+.0f°  pitch %+.0f°  roll %+.0f°", r.yaw, r.pitch, r.roll))
-                                        .font(Theme.mono(10.5))
-                                        .foregroundStyle(.white.opacity(0.55))
-                                        .monospacedDigit()
-                                }
-                            }
-                            Spacer()
+                    ForEach(rows) { row in
+                        DeviceRowView(row: row, reading: reading(for: row)) { used in
+                            if let d = row.device { model.setDevice(d, used: used) }
                         }
                     }
-                    let live = calibration.streams.filter { $0.live }.count
-                    Text(calibration.streamHint(mode: mode, grip: model.settings.airPodGrip))
+                    Text(model.setupHint())
                         .font(Theme.body(13))
                         .foregroundStyle(.white.opacity(0.65))
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Button("Start Calibration") { calibration.begin() }
+                    Button("Start Calibration") { model.beginCalibration() }
                         .buttonStyle(NeonButtonStyle(color: Theme.blue, prominent: true, width: 330))
-                        .disabled(live == 0)
+                        .disabled(!model.plannedDevices.values.contains(where: \.needsCalibration))
                         .padding(.top, 6)
                     Button("Use mouse / trackpad instead") {
                         model.settings.inputMode = .mouse
@@ -113,39 +114,63 @@ struct CalibrationView: View {
         }
     }
 
+    /// The live yaw / pitch / roll line for a device row.
+    private func reading(for row: AppModel.DeviceRow) -> CalibrationModel.Reading? {
+        guard let d = row.device, row.live else { return nil }
+        return calibration.streams.first { $0.id.device == d && $0.live }?.reading
+    }
+
     private var mode: InputMode { model.settings.inputMode }
     private var usesCase: Bool { model.usesAirPodsCase }
 
     private var checklist: [(String, String)] {
-        let pod = model.settings.primaryHand.name.lowercased()
+        let main = model.settings.primaryHand.name.lowercased()
         let other = model.settings.primaryHand.other.name.lowercased()
+        let phoneStep = ("Open Swift Saber on your iPhone or iPad",
+                         "Same Wi-Fi network as this Mac. It finds the game automatically — allow Local Network access when asked.")
+        let controllerStep = ("Pair a motion controller with this Mac",
+                              "DualSense, DualShock 4 or Joy-Con: System Settings › Bluetooth, then press a button on it. Its light bar takes the saber's colour.")
         var steps: [(String, String)] = []
         if usesCase {
-            // The case panel covers the AirPods; only the phone's steps remain.
-            if mode.usesPhone {
-                steps.append(("Open Swift Saber on your iPhone",
+            // The case panel covers the AirPods; only the other devices' steps remain.
+            if mode == .airpodAndPhone {
+                steps.append(("Open Swift Saber on your iPhone or iPad",
                               "Same Wi-Fi network as this Mac. Hold it in your \(other) fist; any orientation works."))
+            } else if mode == .automatic {
+                steps.append(("Want a second saber?", "Open Swift Saber on an iPhone or iPad, or pair a DualSense / Joy-Con. It shows up on the right."))
             }
             return steps
         }
-        if mode.usesAirPods {
-            steps.append(("Connect your AirPods to this Mac",
-                          "AirPods Pro / Max / 3rd gen or later with spatial audio support."))
-            steps.append(("Turn off Automatic Ear Detection",
-                          "System Settings › your AirPods › Automatic Ear Detection: Off. Otherwise motion stops when the buds leave your ears."))
-        }
-        if mode.usesPhone {
-            steps.append(("Open Swift Saber on your iPhone",
-                          "Same Wi-Fi network as this Mac. It finds the game automatically — allow Local Network access when asked."))
-        }
         switch mode {
-        case .airpodAndPhone:
-            steps.append(("AirPod in your \(pod) fist, iPhone in your \(other)",
-                          "Hold one bud only (AirPods stream from one bud at a time). Grip the phone like a hilt; any orientation works."))
-        case .phone:
-            steps.append(("Hold the iPhone in your \(pod) fist", "Grip it like a sword hilt — any orientation works."))
+        case .automatic:
+            steps.append(("Connect any two devices",
+                          "An AirPod (with Automatic Ear Detection off), an iPhone or iPad running Swift Saber on the same Wi-Fi, or a DualSense, DualShock 4 or Joy-Con paired over Bluetooth."))
+            steps.append(("Check the hands",
+                          "Each device shows the hand it will drive. Swap them, or switch off one you don't want as a saber — like AirPods you're wearing."))
+            steps.append(("Hold them like hilts", "Grip each device like a sword handle, any way round: calibration works out the orientation."))
+        case .controllers:
+            steps.append(controllerStep)
+            steps.append(("One in each hand", "Grip it like a hilt, any way round. A Joy-Con pair goes L in the left hand, R in the right."))
+        case .twoPhones:
+            steps.append(("Open Swift Saber on both devices", phoneStep.1))
+            steps.append(("One in each fist", "Grip each like a sword hilt; any orientation works. Set a device to Remote only on its screen if you'd rather not swing it."))
         default:
-            steps.append(("Hold one AirPod in your \(pod) fist", "Grip it firmly, stem pointing any direction — calibration works out the orientation."))
+            if mode.usesAirPods {
+                steps.append(("Connect your AirPods to this Mac",
+                              "AirPods Pro / Max / 3rd gen or later with spatial audio support."))
+                steps.append(("Turn off Automatic Ear Detection",
+                              "System Settings › your AirPods › Automatic Ear Detection: Off. Otherwise motion stops when the buds leave your ears."))
+            }
+            if mode.usesPhone { steps.append(phoneStep) }
+            switch mode {
+            case .airpodAndPhone:
+                steps.append(("AirPod in your \(main) fist, phone or iPad in your \(other)",
+                              "Hold one bud only (AirPods stream from one bud at a time). Grip the phone like a hilt; any orientation works."))
+            case .phone:
+                steps.append(("Hold it in your \(main) fist", "Grip it like a sword hilt — any orientation works."))
+            default:
+                steps.append(("Hold one AirPod in your \(main) fist", "Grip it firmly, stem pointing any direction — calibration works out the orientation."))
+            }
         }
         steps.append(("Stand facing the screen", "Game audio plays through your Mac's speakers (change in Settings)."))
         return steps
@@ -173,7 +198,7 @@ struct CalibrationView: View {
                 HStack(alignment: .top, spacing: 24) {
                     ForEach(active) { s in
                         HStack(alignment: .center, spacing: 12) {
-                            HoldRing(label: s.id.label, progress: s.progress,
+                            HoldRing(label: model.streamName(s.id), progress: s.progress,
                                      color: color(for: s.id),
                                      done: s.awaitingNext || CalibrationModel.stepIndex(s.step) > CalibrationModel.stepIndex(calibration.currentStep))
                             if let r = s.reading {
@@ -191,7 +216,7 @@ struct CalibrationView: View {
                         .disabled(!calibration.canAdvance)
                 }
                 Text(calibration.canAdvance
-                     ? "Press Next, Return or Space — or tap NEXT on the iPhone — when you're ready."
+                     ? "Press Next, Return or Space — or NEXT on your phone or controller — when you're ready."
                      : "Hold still until the ring fills. You'll get a chance to move before the next step.")
                     .font(Theme.body(12.5))
                     .foregroundStyle(.white.opacity(0.5))
@@ -201,11 +226,12 @@ struct CalibrationView: View {
         .frame(width: 860)
     }
 
+    /// The colour of the hand this stream's device is about to drive.
     private func color(for id: StreamID) -> Color {
-        switch id {
+        switch model.plannedDevices.first(where: { $0.value == id.device })?.key {
         case .left: return Theme.red
-        case .phone: return Color(red: 0.75, green: 0.55, blue: 1.0)
-        default: return Theme.blue
+        case .right: return Theme.blue
+        case nil: return Color(red: 0.75, green: 0.55, blue: 1.0)
         }
     }
 
@@ -232,6 +258,14 @@ struct CalibrationView: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 560)
+                HStack(spacing: 14) {
+                    SaberHandsView(sabers: model.saberSummary().map { (hand: $0.hand, name: model.deviceName($0.device), symbol: model.deviceSymbol($0.device)) })
+                        .frame(width: 360)
+                    if model.canSwapHands {
+                        Button("⇄ Swap") { model.swapHands() }
+                            .buttonStyle(NeonButtonStyle(color: .gray))
+                    }
+                }
                 HStack(spacing: 16) {
                     Button("Calibrate Again") { calibration.restart() }
                         .buttonStyle(NeonButtonStyle(color: .gray))
@@ -247,7 +281,7 @@ struct CalibrationView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(width: 700)
-        .offset(y: 160)
+        .offset(y: 120)
     }
 }
 
@@ -276,14 +310,89 @@ struct PhoneStatusBanner: View {
     @ObservedObject var phone: PhoneControllerServer
     var body: some View {
         switch phone.status {
-        case .connected(let name):
-            Label("\(name) connected", systemImage: "iphone.radiowaves.left.and.right").font(Theme.body(13)).foregroundStyle(.green)
+        case .connected:
+            EmptyView() // each device has its own row
         case .waiting:
-            Label("Looking for Swift Saber on your iPhone…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
+            Label("Looking for Swift Saber on an iPhone or iPad…", systemImage: "iphone").font(Theme.body(13)).foregroundStyle(.white.opacity(0.7))
         case .failed(let msg):
             Label("Network error: \(msg)", systemImage: "exclamationmark.triangle.fill").font(Theme.body(13)).foregroundStyle(.orange)
         case .off:
             EmptyView()
+        }
+    }
+}
+
+/// Which device drives each hand.
+struct SaberHandsView: View {
+    var sabers: [(hand: Hand, name: String, symbol: String)]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(Hand.allCases, id: \.self) { hand in
+                let saber = sabers.first { $0.hand == hand }
+                let color = hand == .left ? Theme.red : Theme.blue
+                VStack(spacing: 6) {
+                    Text(hand == .left ? "LEFT HAND" : "RIGHT HAND").font(Theme.mono(10)).foregroundStyle(color)
+                    Image(systemName: saber?.symbol ?? "hand.raised.slash")
+                        .font(.system(size: 24))
+                        .foregroundStyle(saber == nil ? Color.white.opacity(0.25) : Color.white)
+                        .frame(height: 30)
+                    Text(saber?.name ?? "No saber")
+                        .font(Theme.body(12.5))
+                        .foregroundStyle(saber == nil ? Color.white.opacity(0.4) : Color.white)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(color.opacity(saber == nil ? 0.04 : 0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(saber == nil ? 0.2 : 0.6), lineWidth: 1))
+            }
+        }
+    }
+}
+
+/// One connected device in Saber Setup: what it is, whether it streams, the hand it will
+/// drive, and a switch to leave it out.
+struct DeviceRowView: View {
+    var row: AppModel.DeviceRow
+    var reading: CalibrationModel.Reading?
+    var setUsed: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: row.symbol)
+                .font(.system(size: 20))
+                .foregroundStyle(row.live ? Color.green : Color.gray)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.name).font(Theme.body(14)).foregroundStyle(.white).lineLimit(1)
+                Text(row.note ?? (row.calibrated ? "Streaming · calibrated" : "Streaming"))
+                    .font(Theme.body(11.5))
+                    .foregroundStyle(row.note == nil ? Color.green : Color.white.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let r = reading {
+                    Text(String(format: "yaw %+.0f°  pitch %+.0f°  roll %+.0f°", r.yaw, r.pitch, r.roll))
+                        .font(Theme.mono(10))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .monospacedDigit()
+                }
+            }
+            Spacer(minLength: 6)
+            if let hand = row.hand {
+                Text(hand == .left ? "LEFT" : "RIGHT")
+                    .font(Theme.mono(10)).tracking(1)
+                    .foregroundStyle(hand == .left ? Theme.red : Theme.blue)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().stroke((hand == .left ? Theme.red : Theme.blue).opacity(0.7), lineWidth: 1))
+            }
+            if row.canToggle {
+                Toggle("Use", isOn: Binding(get: { row.used }, set: setUsed))
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .help(row.used ? "Leave this device out" : "Use this device as a saber")
+            }
         }
     }
 }

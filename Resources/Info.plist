@@ -33,7 +33,7 @@
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Swift Saber connects to the Swift Saber app on your iPhone so you can use the phone as a second saber.</string>
+	<string>Swift Saber connects to the Swift Saber app on your iPhone or iPad so you can swing it as a saber or use it as a remote.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_swiftsaber._udp</string>

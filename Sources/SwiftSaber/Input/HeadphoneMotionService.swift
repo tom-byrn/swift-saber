@@ -3,43 +3,6 @@ import CoreMotion
 import QuartzCore
 import SaberCore
 
-/// Identifies a motion stream coming from the AirPods.
-/// AirPods tag each sample with the bud that produced it (left / right).
-enum StreamID: Int, Codable, CaseIterable, Comparable {
-    case unknown = 0
-    case left = 1
-    case right = 2
-    /// The Swift Saber iPhone app.
-    case phone = 3
-    /// An AirPod's motion read while it sits in the closed charging case (see `AirPodsCaseSession`).
-    case airPodCase = 4
-
-    var label: String {
-        switch self {
-        case .unknown: return "AirPods"
-        case .left: return "Left AirPod"
-        case .right: return "Right AirPod"
-        case .phone: return "iPhone"
-        case .airPodCase: return "AirPods Case"
-        }
-    }
-
-    var isAirPod: Bool { self != .phone }
-    static let airPods: [StreamID] = [.unknown, .left, .right, .airPodCase]
-
-    /// SF Symbol for this stream.
-    var symbol: String {
-        switch self {
-        case .phone: return "iphone"
-        case .airPodCase: return "airpodspro.chargingcase.wireless.fill"
-        case .left: return "airpodpro.left"
-        default: return "airpodpro.right"
-        }
-    }
-
-    static func < (a: StreamID, b: StreamID) -> Bool { a.rawValue < b.rawValue }
-}
-
 /// Wraps `CMHeadphoneMotionManager` and forwards every sample to the input hub.
 final class HeadphoneMotionService: NSObject, ObservableObject, CMHeadphoneMotionManagerDelegate {
     enum Status: Equatable {

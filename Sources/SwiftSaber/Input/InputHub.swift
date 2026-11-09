@@ -44,6 +44,8 @@ final class InputHub {
     private var airPodLatency: Double = 0.04
     /// The phone streams over Wi-Fi at ~100 Hz, so it arrives sooner than AirPods motion.
     private let phoneLatency: Double = 0.025
+    /// Game controllers report motion over Bluetooth HID at a high rate.
+    private let controllerLatency: Double = 0.02
     private var rawObserver: ((StreamID, MotionSample) -> Void)?
 
     /// A stream counts as live if it delivered a sample within this window.
@@ -129,6 +131,18 @@ final class InputHub {
 
     // MARK: Queries
 
+    private func latency(for id: StreamID) -> Double {
+        if id.isPhone { return phoneLatency }
+        if id.isController { return controllerLatency }
+        return airPodLatency
+    }
+
+    /// Forgets a stream's calibration and recent samples (its device changed or disconnected).
+    func forget(_ id: StreamID) {
+        lock.lock(); defer { lock.unlock() }
+        streams[id] = nil
+    }
+
     func streamInfos(now: Double = CACurrentMediaTime()) -> [StreamInfo] {
         lock.lock(); defer { lock.unlock() }
         return streams.map { id, s in
@@ -154,7 +168,7 @@ final class InputHub {
             var resolved = source
             if source == .anyAirPod {
                 // Most recently active calibrated bud.
-                let candidates = StreamID.airPods.compactMap { id -> (StreamID, Double)? in
+                let candidates = SaberDevice.airPod.streams.compactMap { id -> (StreamID, Double)? in
                     guard let s = streams[id], s.calibration != nil, let t = s.filter.lastSampleTime else { return nil }
                     return (id, t)
                 }
@@ -176,7 +190,7 @@ final class InputHub {
                     out.append(SaberInput(hand: hand, direction: Vec3.forward, active: false))
                     continue
                 }
-                out.append(SaberInput(hand: hand, direction: dir, active: true, latency: id == .phone ? phoneLatency : airPodLatency))
+                out.append(SaberInput(hand: hand, direction: dir, active: true, latency: latency(for: id)))
             case .mouse:
                 guard let target = mouseTarget else {
                     out.append(SaberInput(hand: hand, direction: Vec3.forward, active: false))

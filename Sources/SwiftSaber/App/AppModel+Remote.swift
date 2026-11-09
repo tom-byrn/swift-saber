@@ -7,7 +7,14 @@ extension AppModel {
     // MARK: Mac → phone
 
     func sendPhoneState() {
-        phone.sendState(remoteState())
+        guard phone.isConnected else { return }
+        let mode = settings.inputMode
+        let excluded = excludedDevices
+        // Each device is told whether it is a saber (or would be, once calibrated) or a remote.
+        phone.sendState(remoteState()) { slot in
+            guard let slot else { return false }
+            return mode.allows(slot.device) && !excluded.contains(slot.device)
+        }
     }
 
     func remoteState() -> RemoteState {
@@ -25,6 +32,10 @@ extension AppModel {
         s.sabersReady = hands
         s.anyCalibrated = !calibratedStreams.isEmpty
         s.phoneIsSaber = settings.inputMode.usesPhone
+        s.sabers = saberSummary().map {
+            RemoteState.Saber(hand: $0.hand.rawValue, device: deviceName($0.device), symbol: deviceSymbol($0.device), ready: $0.ready)
+        }
+        s.canSwapHands = canSwapHands
         s.demo = isDemo
         s.countdown = countdownValue
         s.countdownMessage = countdownMessage
@@ -89,9 +100,13 @@ extension AppModel {
         case .detecting:
             c.phase = .detecting
             c.title = "Get ready"
-            c.detail = cal.streamHint(mode: settings.inputMode, grip: settings.airPodGrip)
-            c.streams = cal.streams.map { RemoteState.Calibration.Stream(id: "\($0.id.rawValue)", name: $0.id.label, live: $0.live, progress: 0, done: false) }
-            c.canStart = cal.streams.contains { $0.live }
+            c.detail = setupHint()
+            c.streams = deviceRows().map {
+                RemoteState.Calibration.Stream(id: $0.id, name: $0.name, live: $0.live, progress: 0, done: false,
+                                               symbol: $0.symbol, hand: $0.hand?.rawValue,
+                                               used: $0.canToggle ? $0.used : nil, note: $0.note)
+            }
+            c.canStart = plannedDevices.values.contains(where: \.needsCalibration)
             c.failure = cal.failure
             if settings.inputMode.usesAirPods {
                 c.airPodGrip = settings.airPodGrip.rawValue
@@ -106,9 +121,11 @@ extension AppModel {
             c.title = text.title
             c.detail = text.detail
             let current = CalibrationModel.stepIndex(cal.currentStep)
-            c.streams = active.map {
-                RemoteState.Calibration.Stream(id: "\($0.id.rawValue)", name: $0.id.label, live: $0.live, progress: $0.progress,
-                      done: $0.awaitingNext || CalibrationModel.stepIndex($0.step) > current)
+            let planned = plannedDevices
+            c.streams = active.map { s in
+                RemoteState.Calibration.Stream(id: "\(s.id.rawValue)", name: streamName(s.id), live: s.live, progress: s.progress,
+                      done: s.awaitingNext || CalibrationModel.stepIndex(s.step) > current,
+                      symbol: streamSymbol(s.id), hand: planned.first { $0.value == s.id.device }?.key.rawValue)
             }
             c.canAdvance = cal.canAdvance
         case .done:
@@ -263,7 +280,7 @@ extension AppModel {
             recenter()
 
         case .beginCalibration:
-            if screen == .calibration && calibration.phase == .detecting { calibration.begin() }
+            if screen == .calibration && calibration.phase == .detecting { beginCalibration() }
         case .calibrationNext:
             if screen == .calibration && calibration.phase == .calibrating { calibrationNext() }
         case .restartCalibration:
@@ -286,6 +303,12 @@ extension AppModel {
             airPodsCase.confirmLidClosed()
         case .disconnectCase:
             airPodsCase.disconnect()
+        case .swapHands:
+            if screen != .playing && screen != .countdown { swapHands() }
+        case let .setDeviceUsed(id, used):
+            if let device = SaberDevice(rawValue: id), device != .mouse, screen == .calibration || screen == .settings {
+                setDevice(device, used: used)
+            }
         case .useMouseInstead:
             if screen == .calibration {
                 settings.inputMode = .mouse

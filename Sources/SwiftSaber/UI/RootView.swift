@@ -88,7 +88,7 @@ struct MainMenuView: View {
         HStack(alignment: .center, spacing: 60) {
             VStack(alignment: .leading, spacing: 30) {
                 TitleLogo(size: 104)
-                Text("Slice to the beat with AirPods as your sabers.")
+                Text("Slice to the beat with AirPods, iPhones, iPads or controllers as your sabers.")
                     .font(Theme.body(17))
                     .foregroundStyle(.white.opacity(0.7))
                     .padding(.leading, 6)
@@ -123,7 +123,7 @@ struct MainMenuView: View {
                 KeyHint(key: "R", label: "Recenter")
                 KeyHint(key: "F", label: "Full screen")
                 KeyHint(key: "esc", label: "Pause / Back")
-                Label("Every menu also works from the Swift Saber app on your iPhone", systemImage: "iphone")
+                Label("Every menu also works from the Swift Saber app on your iPhone or iPad", systemImage: "iphone")
                     .font(Theme.body(12))
                     .foregroundStyle(.white.opacity(0.5))
             }
@@ -144,49 +144,42 @@ struct InputStatusView: View {
                 Spacer()
                 Text(model.settings.inputMode.title).font(Theme.body(13)).foregroundStyle(.white.opacity(0.85))
             }
-            if model.settings.inputMode.usesAirPods {
-                let caseGrip = model.settings.airPodGrip == .closedCase
-                switch caseGrip ? .waitingForAirPods : motion.status {
+            if model.usesHeadphoneMotion {
+                switch motion.status {
                 case .denied:
                     Label("Motion access denied — enable it in System Settings › Privacy & Security", systemImage: "exclamationmark.triangle.fill")
                         .font(Theme.body(12)).foregroundStyle(.orange)
-                case .unavailable:
+                case .unavailable where model.settings.inputMode != .automatic:
                     Label("Headphone motion isn't available on this Mac", systemImage: "exclamationmark.triangle.fill")
                         .font(Theme.body(12)).foregroundStyle(.orange)
                 default:
-                    if !model.streamInfos.contains(where: { $0.id.isAirPod && ($0.id == .airPodCase) == caseGrip }) {
-                        Label(caseGrip ? "AirPods case not connected — open Set Up Sabers" : "Waiting for AirPods motion…",
-                              systemImage: caseGrip ? "airpodspro.chargingcase.wireless" : "airpodspro")
-                            .font(Theme.body(12)).foregroundStyle(.white.opacity(0.6))
-                    }
-                    ForEach(model.streamInfos.filter { $0.id.isAirPod && ($0.id == .airPodCase) == caseGrip }) { s in
-                        HStack(spacing: 8) {
-                            Circle().fill(s.isLive ? Color.green : Color.gray).frame(width: 7, height: 7)
-                                .shadow(color: s.isLive ? .green : .clear, radius: 4)
-                            Text(s.id.label).font(Theme.body(12)).foregroundStyle(.white.opacity(0.85))
-                            Spacer()
-                            Text(s.isCalibrated ? "calibrated" : "not calibrated")
-                                .font(Theme.body(11))
-                                .foregroundStyle(s.isCalibrated ? Theme.blue : Color.orange)
-                        }
-                    }
+                    EmptyView()
                 }
             }
-            if model.settings.inputMode.usesPhone {
+            let sabers = model.saberSummary()
+            let live = model.liveDevices
+            ForEach(Array(sabers.enumerated()), id: \.offset) { _, saber in
                 HStack(spacing: 8) {
-                    let connected = phone.isConnected
-                    Circle().fill(connected ? Color.green : Color.gray).frame(width: 7, height: 7)
-                    Text(connected ? "iPhone controller" : "iPhone: open Swift Saber").font(Theme.body(12)).foregroundStyle(.white.opacity(0.85))
+                    Circle().fill(saber.ready ? Color.green : Color.gray).frame(width: 7, height: 7)
+                        .shadow(color: saber.ready ? .green : .clear, radius: 4)
+                    Image(systemName: model.deviceSymbol(saber.device)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
+                    Text("\(saber.hand.name): \(model.deviceName(saber.device))")
+                        .font(Theme.body(12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                     Spacer()
-                    Text(model.phoneCalibrated ? "calibrated" : "not calibrated")
+                    Text(saber.ready ? "ready" : (live.contains(saber.device) ? "not calibrated" : "waiting"))
                         .font(Theme.body(11))
-                        .foregroundStyle(model.phoneCalibrated ? Theme.blue : Color.orange)
+                        .foregroundStyle(saber.ready ? Theme.blue : Color.orange)
                 }
             }
-            let hands = model.availableHands
-            Text(hands.count >= 2 ? "Two sabers ready" : (hands.count == 1 ? "One saber ready (\(hands[0].name.lowercased()) hand)" : "No sabers ready yet"))
-                .font(Theme.body(12))
-                .foregroundStyle(hands.isEmpty ? Color.orange : Color.white.opacity(0.6))
+            if model.needsCalibration {
+                Text(live.isEmpty ? "Connect a device, then Set Up Sabers" : "Set Up Sabers to calibrate your devices")
+                    .font(Theme.body(12)).foregroundStyle(Color.orange)
+            } else {
+                let hands = model.availableHands
+                Text(hands.count >= 2 ? "Two sabers ready" : (hands.count == 1 ? "One saber ready (\(hands[0].name.lowercased()) hand)" : "No sabers ready yet"))
+                    .font(Theme.body(12))
+                    .foregroundStyle(hands.isEmpty ? Color.orange : Color.white.opacity(0.6))
+            }
         }
     }
 }

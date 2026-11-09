@@ -44,7 +44,7 @@ struct RemoteHeader: View {
     }
 
     private var role: (String, Color) {
-        if !state.phoneIsSaber { return ("REMOTE", Color.white.opacity(0.7)) }
+        if !model.wantsSaber || !state.phoneIsSaber { return ("REMOTE", Color.white.opacity(0.7)) }
         switch model.hand {
         case 0: return ("LEFT SABER", Neon.red)
         case 1: return ("RIGHT SABER", Neon.blue)
@@ -60,12 +60,23 @@ struct RemoteHeader: View {
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
             Spacer()
-            Text(role.0)
-                .font(Theme.mono(11))
-                .tracking(1.5)
+            // Tap the badge to switch between saber and remote.
+            Menu {
+                Picker("Use this \(ControllerModel.deviceWord) as", selection: Binding(get: { model.wantsSaber }, set: { model.setWantsSaber($0) })) {
+                    Label("Saber", systemImage: "wand.and.rays").tag(true)
+                    Label("Remote only", systemImage: "av.remote").tag(false)
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(role.0)
+                        .font(Theme.mono(11))
+                        .tracking(1.5)
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                }
                 .foregroundStyle(role.1)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(Capsule().stroke(role.1.opacity(0.6), lineWidth: 1))
+            }
         }
         .frame(height: 32)
     }
@@ -157,6 +168,59 @@ struct SectionLabel: View {
     }
 }
 
+/// Which device drives each hand, with a Swap button. Hidden for Macs that don't send it.
+struct SabersCard: View {
+    @EnvironmentObject var model: ControllerModel
+    var state: RemoteState
+
+    var body: some View {
+        if let sabers = state.sabers {
+            Card {
+                SectionLabel("Your sabers")
+                HStack(spacing: 10) {
+                    ForEach([0, 1], id: \.self) { hand in
+                        HandTile(hand: hand, saber: sabers.first { $0.hand == hand })
+                    }
+                }
+                if state.canSwapHands == true {
+                    NeonButton(title: "SWAP HANDS", icon: "arrow.left.arrow.right", color: .white, height: 46) {
+                        model.send(.swapHands)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct HandTile: View {
+    var hand: Int
+    var saber: RemoteState.Saber?
+
+    var body: some View {
+        let color = hand == 0 ? Neon.red : Neon.blue
+        VStack(spacing: 6) {
+            Text(hand == 0 ? "LEFT" : "RIGHT").font(Theme.mono(11)).tracking(1.5).foregroundStyle(color)
+            Image(systemName: saber?.symbol ?? "hand.raised.slash")
+                .font(.system(size: 24))
+                .frame(height: 30)
+                .foregroundStyle(saber == nil ? Color.white.opacity(0.3) : Color.white)
+            Text(saber?.device ?? "No saber")
+                .font(Theme.body(13))
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .foregroundStyle(saber == nil ? Color.white.opacity(0.4) : Color.white)
+            if let saber {
+                Text(saber.ready ? "Ready" : "Not calibrated")
+                    .font(Theme.body(11))
+                    .foregroundStyle(saber.ready ? Neon.green : Neon.orange)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14).fill(color.opacity(saber == nil ? 0.04 : 0.13)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(color.opacity(saber == nil ? 0.25 : 0.7), lineWidth: 1))
+    }
+}
+
 /// A slider that sends its value while dragging (throttled) and once more on release.
 struct RemoteSlider: View {
     var title: String
@@ -240,7 +304,13 @@ struct MenuScreen: View {
             Text(readyText)
                 .font(Theme.body(15))
                 .foregroundStyle(state.sabersReady == 0 ? Neon.orange : Color.white.opacity(0.6))
-                .padding(.bottom, 10)
+            if let sabers = state.sabers, !sabers.isEmpty {
+                Text(sabers.map { "\($0.hand == 0 ? "Left" : "Right"): \($0.device)" }.joined(separator: "  ·  "))
+                    .font(Theme.body(13))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+            Spacer().frame(height: 10)
             Spacer(minLength: 4)
 
             NeonButton(title: "PLAY", icon: "play.fill", color: Neon.blue, prominent: true, height: 72) {
@@ -505,8 +575,9 @@ struct CalibrationScreen: View {
                         .pickerStyle(.segmented)
                     }
                     if let airPodsCase = cal.airPodsCase { CaseSetupCard(setup: airPodsCase) }
+                    SabersCard(state: state)
                     Card {
-                        SectionLabel("Motion streams")
+                        SectionLabel(state.sabers == nil ? "Motion streams" : "Devices")
                         if cal.streams.isEmpty {
                             HStack(spacing: 10) {
                                 ProgressView().tint(.white)
@@ -514,17 +585,7 @@ struct CalibrationScreen: View {
                             }
                         }
                         ForEach(cal.streams) { s in
-                            HStack(spacing: 12) {
-                                Image(systemName: s.name == "iPhone" ? "iphone" : (s.name == "AirPods Case" ? "airpodspro.chargingcase.wireless.fill" : "airpodpro"))
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(s.live ? Color.green : Color.gray)
-                                    .frame(width: 30)
-                                Text(s.name)
-                                Spacer()
-                                Text(s.live ? "Streaming" : "No data")
-                                    .font(Theme.body(13))
-                                    .foregroundStyle(s.live ? Color.green : Color.gray)
-                            }
+                            DeviceRow(stream: s)
                         }
                         Text(cal.detail)
                             .font(Theme.body(13)).foregroundStyle(.white.opacity(0.65))
@@ -558,6 +619,14 @@ struct CalibrationScreen: View {
         }
     }
 
+    private func ringColor(_ s: RemoteState.Calibration.Stream) -> Color {
+        switch s.hand {
+        case 0: return Neon.red
+        case 1: return Neon.blue
+        default: return s.name.hasPrefix("Left") ? Neon.red : Neon.blue
+        }
+    }
+
     private var calibrating: some View {
         VStack(spacing: 22) {
             Spacer()
@@ -575,7 +644,7 @@ struct CalibrationScreen: View {
                             Circle().stroke(Color.white.opacity(0.1), lineWidth: 8)
                             Circle()
                                 .trim(from: 0, to: s.done ? 1 : s.progress)
-                                .stroke(s.name.hasPrefix("Left") ? Neon.red : Neon.blue,
+                                .stroke(ringColor(s),
                                         style: StrokeStyle(lineWidth: 8, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
                                 .animation(.linear(duration: 0.1), value: s.progress)
@@ -617,6 +686,7 @@ struct CalibrationScreen: View {
             Text(cal.detail)
                 .font(Theme.body(17)).foregroundStyle(.white.opacity(0.75))
                 .multilineTextAlignment(.center)
+            SabersCard(state: state)
             Spacer()
             NeonButton(title: "PLAY NOW", icon: "play.fill", color: Neon.red, prominent: true, height: 64) {
                 model.send(.calibrationPlayNow)
@@ -628,6 +698,48 @@ struct CalibrationScreen: View {
         }
         .padding(.horizontal, 22)
         .padding(.bottom, 14)
+    }
+}
+
+/// One device in Saber Setup: icon, name, status, the hand it will drive and a switch to
+/// leave it out.
+struct DeviceRow: View {
+    @EnvironmentObject var model: ControllerModel
+    var stream: RemoteState.Calibration.Stream
+
+    private var symbol: String {
+        if let symbol = stream.symbol { return symbol }
+        if stream.name == "iPhone" { return "iphone" }
+        return stream.name == "AirPods Case" ? "airpodspro.chargingcase.wireless.fill" : "airpodpro"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 22))
+                .foregroundStyle(stream.live ? Color.green : Color.gray)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stream.name).lineLimit(1)
+                Text(stream.note ?? (stream.live ? "Streaming" : "No data"))
+                    .font(Theme.body(12))
+                    .foregroundStyle(stream.note == nil && stream.live ? Color.green : Color.white.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            if let hand = stream.hand {
+                Text(hand == 0 ? "LEFT" : "RIGHT")
+                    .font(Theme.mono(10)).tracking(1)
+                    .foregroundStyle(hand == 0 ? Neon.red : Neon.blue)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().stroke((hand == 0 ? Neon.red : Neon.blue).opacity(0.7), lineWidth: 1))
+            }
+            if let used = stream.used {
+                Toggle("Use", isOn: Binding(get: { used }, set: { model.send(.setDeviceUsed(stream.id, $0)) }))
+                    .labelsHidden()
+                    .tint(Neon.blue)
+            }
+        }
     }
 }
 
@@ -653,6 +765,7 @@ struct SettingsScreen: View {
                 .padding(.horizontal, 20)
             ScrollView {
                 VStack(spacing: 16) {
+                    SabersCard(state: state)
                     Card {
                         SectionLabel("Controls")
                         HStack {
@@ -674,13 +787,15 @@ struct SettingsScreen: View {
                         Text(g.inputDetail).font(Theme.body(13)).foregroundStyle(.white.opacity(0.6))
                             .fixedSize(horizontal: false, vertical: true)
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("AirPod hand")
-                            Picker("AirPod hand", selection: Binding(get: { g.primaryHand },
-                                                                     set: { model.send(.setPrimaryHand($0)) })) {
+                            Text("Main hand")
+                            Picker("Main hand", selection: Binding(get: { g.primaryHand },
+                                                                   set: { model.send(.setPrimaryHand($0)) })) {
                                 Text("Left").tag(0)
                                 Text("Right").tag(1)
                             }
                             .pickerStyle(.segmented)
+                            Text("Your first device (the AirPod, if you use one) goes in your main hand.")
+                                .font(Theme.body(12)).foregroundStyle(.white.opacity(0.5))
                         }
                         slider("Saber sensitivity", .sensitivity, g.sensitivity, 0.6...2.0) { String(format: "%.2f×", $0) }
                         slider("AirPods motion delay", .airPodLatencyMs, g.airPodLatencyMs, 0...150) { "\(Int($0)) ms" }

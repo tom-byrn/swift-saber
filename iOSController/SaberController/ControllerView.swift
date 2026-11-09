@@ -73,13 +73,17 @@ struct ControllerView: View {
                 .ignoresSafeArea()
                 .animation(.easeOut(duration: 0.18), value: flash)
 
-            if case .connected = model.link, let state = model.remote {
-                RemoteRoot(state: state, accent: accent)
-                    .transition(.opacity)
-            } else {
-                ConnectionView(accent: accent)
-                    .transition(.opacity)
+            // On an iPad the controls keep a phone-like column instead of stretching edge to edge.
+            Group {
+                if case .connected = model.link, let state = model.remote {
+                    RemoteRoot(state: state, accent: accent)
+                        .transition(.opacity)
+                } else {
+                    ConnectionView(accent: accent)
+                        .transition(.opacity)
+                }
             }
+            .frame(maxWidth: 620)
         }
         .preferredColorScheme(.dark)
         // Default for text without its own font (toggle and picker labels). Don't use
@@ -101,6 +105,7 @@ struct ConnectionView: View {
     @State private var pulse = false
 
     private var handText: String {
+        if !model.wantsSaber { return "REMOTE ONLY" }
         switch model.hand {
         case 0: return "LEFT SABER"
         case 1: return "RIGHT SABER"
@@ -120,6 +125,8 @@ struct ConnectionView: View {
             Text(handText)
                 .font(Theme.heading(26)).tracking(2)
                 .foregroundStyle(accent)
+            RolePicker()
+                .frame(maxWidth: 320)
 
             Spacer(minLength: 8)
 
@@ -130,7 +137,7 @@ struct ConnectionView: View {
                     TileButton(title: "PAUSE", icon: "pause.fill", color: accent) { model.tap(.pause) }
                 }
             }
-            Text("Grip the phone like a sword hilt — any orientation works. Once connected, every menu of the game appears here.")
+            Text(footnote)
                 .font(Theme.body(13))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.55))
@@ -140,6 +147,16 @@ struct ConnectionView: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true }
         }
+    }
+
+    private var footnote: String {
+        var text = model.wantsSaber
+            ? "Grip the \(ControllerModel.deviceWord) like a sword hilt — any orientation works. Once connected, every menu of the game appears here."
+            : "This \(ControllerModel.deviceWord) works the game's menus without being a saber. Once connected, every menu appears here."
+        if ControllerModel.kind == .iPad && model.wantsSaber {
+            text += " iPads can't buzz, so the screen flashes on every cut instead."
+        }
+        return text
     }
 
     @ViewBuilder private var statusCard: some View {
@@ -160,10 +177,12 @@ struct ConnectionView: View {
                 }
             case .connected(let name):
                 Label("Connected to \(name)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                Label(model.calibrated ? "Calibrated" : "Not calibrated yet — run Set Up Sabers on the Mac",
-                      systemImage: model.calibrated ? "scope" : "exclamationmark.triangle.fill")
-                    .font(Theme.body(13))
-                    .foregroundStyle(model.calibrated ? Color.white.opacity(0.8) : Color.orange)
+                if model.wantsSaber {
+                    Label(model.calibrated ? "Calibrated" : "Not calibrated yet — run Set Up Sabers on the Mac",
+                          systemImage: model.calibrated ? "scope" : "exclamationmark.triangle.fill")
+                        .font(Theme.body(13))
+                        .foregroundStyle(model.calibrated ? Color.white.opacity(0.8) : Color.orange)
+                }
             }
             if model.macs.count > 1 {
                 Menu("Switch Mac") {
@@ -186,6 +205,19 @@ struct ConnectionView: View {
 }
 
 // MARK: - Shared pieces
+
+/// Saber or remote: whether this device's motion drives a saber.
+struct RolePicker: View {
+    @EnvironmentObject var model: ControllerModel
+
+    var body: some View {
+        Picker("Use this \(ControllerModel.deviceWord) as", selection: Binding(get: { model.wantsSaber }, set: { model.setWantsSaber($0) })) {
+            Text("Saber").tag(true)
+            Text("Remote only").tag(false)
+        }
+        .pickerStyle(.segmented)
+    }
+}
 
 /// The Mac's "SWIFT SABER" title: staggered neon words with a blade slashing through.
 struct Logo: View {

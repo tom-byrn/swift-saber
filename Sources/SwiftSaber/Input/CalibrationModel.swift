@@ -87,9 +87,9 @@ final class CalibrationModel: ObservableObject {
 
     var liveStreamIDs: [StreamID] { streams.filter { $0.live }.map { $0.id } }
 
-    /// Starts calibrating every stream that is currently live.
-    func begin() {
-        let ids = hub.liveStreams()
+    /// Starts calibrating the given streams (the devices about to become sabers; see
+    /// `AppModel.beginCalibration()`).
+    func begin(streams ids: [StreamID]) {
         guard !ids.isEmpty else { return }
         lock.lock()
         processes = Dictionary(uniqueKeysWithValues: ids.map { ($0, CalibrationProcess()) })
@@ -214,23 +214,46 @@ final class CalibrationModel: ObservableObject {
         return (degrees(yaw), degrees(pitch), degrees(roll))
     }
 
-    /// What the setup screen says about the live motion streams.
-    func streamHint(mode: InputMode, grip: AirPodGrip = .bud) -> String {
-        let live = streams.filter { $0.live }.count
-        let hasPhone = streams.contains { $0.id == .phone && $0.live }
-        let hasPod = streams.contains { $0.id.isAirPod && $0.live }
+    /// What the setup screen says about the devices it can see.
+    static func setupHint(mode: InputMode, planned: [Hand: SaberDevice], live: Set<SaberDevice>,
+                          grip: AirPodGrip, name: (SaberDevice) -> String) -> String {
         let pod = grip == .closedCase ? "AirPods case" : "AirPod"
-        let wake = grip == .closedCase ? "connect the case (left)" : "move the bud around to wake it"
+        let wake = grip == .closedCase ? "connect the case" : "move the bud around to wake it"
+        let motion = planned.filter { $0.value != .mouse }
+        let hasPod = live.contains(.airPod) || live.contains(.airPodCase)
+        let hasPhone = live.contains(.iOS1) || live.contains(.iOS2)
+        let phone = "open Swift Saber on your iPhone or iPad (same Wi-Fi)"
         switch mode {
         case .airpodAndPhone:
-            if hasPhone && hasPod { return "\(pod) and iPhone are both streaming — you'll get two sabers." }
-            if hasPhone { return "iPhone connected. Waiting for \(pod) motion — \(wake)." }
-            if hasPod { return "\(pod) streaming. Waiting for the iPhone — open Swift Saber on it (same Wi-Fi)." }
-            return "Waiting for your \(pod) and iPhone…"
+            if hasPhone && hasPod {
+                let phoneName = planned.values.first(where: \.isPhone).map { name($0) } ?? "phone"
+                return "\(pod) and \(phoneName) are both streaming — you'll get two sabers."
+            }
+            if hasPhone { return "Phone connected. Waiting for \(pod) motion — \(wake)." }
+            if hasPod { return "\(pod) streaming. Waiting for an iPhone or iPad — \(phone)." }
+            return "Waiting for your \(pod) and iPhone or iPad…"
+        case .twoPhones:
+            switch motion.count {
+            case 2: return "Two devices streaming — you'll get two sabers."
+            case 1: return "One device connected. For the second saber, \(phone)."
+            default: return "Waiting for two iPhones or iPads — \(phone)."
+            }
         case .phone:
-            return hasPhone ? "iPhone connected." : "Open Swift Saber on your iPhone (same Wi-Fi network)."
+            return hasPhone ? "\(name(motion.values.first ?? .iOS1)) connected." : "To start, \(phone)."
+        case .controllers:
+            switch motion.count {
+            case 2: return "Two controllers streaming — you'll get two sabers."
+            case 1: return "One controller streaming. Pair another for a second saber (System Settings › Bluetooth)."
+            default: return "Pair a DualSense, DualShock 4 or Joy-Con with this Mac (System Settings › Bluetooth), then press any button on it."
+            }
+        case .automatic:
+            switch motion.count {
+            case 2: return "Two sabers ready to calibrate. Not the right hands? Swap them."
+            case 1: return "One saber so far. Add a second device for two sabers — an iPhone or iPad running Swift Saber, an AirPod or a motion controller."
+            default: return "Connect AirPods, \(phone), or pair a motion controller. Each device shows up here as it starts streaming."
+            }
         default:
-            if live > 0 { return "\(pod) streaming — you're ready to calibrate." }
+            if hasPod { return "\(pod) streaming — you're ready to calibrate." }
             return grip == .closedCase ? "Connect the case to start its motion stream." : "Move the AirPod around a little to wake it up."
         }
     }
@@ -249,15 +272,15 @@ final class CalibrationModel: ObservableObject {
     /// Instruction text for the current step.
     static func instruction(for step: CalibrationProcess.Step, count: Int, grip: AirPodGrip = .bud, awaitingNext: Bool = false) -> (title: String, detail: String) {
         let both = count > 1
-        let thing = grip == .closedCase ? "case" : "AirPod"
+        let thing = grip == .closedCase ? "case" : "device"
         if awaitingNext {
             switch step {
             case .pointAtScreen:
                 return ("Screen pose captured",
-                        "Take your time. Press Next (Return / Space, or NEXT on the iPhone), then raise \(both ? "both fists" : "your fist") to point at the ceiling.")
+                        "Take your time. Press Next (Return / Space, or NEXT on your phone or controller), then raise \(both ? "both fists" : "your fist") to point at the ceiling.")
             case .pointUp:
                 return ("Ceiling pose captured",
-                        "Press Next (Return / Space, or NEXT on the iPhone), then point back at the centre of the screen.")
+                        "Press Next (Return / Space, or NEXT on your phone or controller), then point back at the centre of the screen.")
             default:
                 break
             }
