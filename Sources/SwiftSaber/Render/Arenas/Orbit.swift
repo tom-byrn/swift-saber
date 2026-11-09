@@ -5,7 +5,7 @@ import SaberCore
 
 /// "Orbit": a platform drifting in deep space. A giant three-axis gyroscope turns ahead of
 /// the runway, a ringed planet glows below, laser fans rise from the void and cross
-/// overhead, and asteroids hang in the starfield.
+/// overhead, space stations turn in the distance and asteroids hang against a nebula.
 ///
 /// Light groups: rings = gyroscope, back = planet atmosphere + planetary ring,
 /// floor = runway + beacons, left/right lasers = crossing laser fans.
@@ -26,6 +26,8 @@ final class OrbitStage: Stage {
 
     private var planet = SCNNode()
     private var gyroLight: SCNLight?
+    private var habitats: [(node: SCNNode, rate: Double)] = []
+    private let beaconMat = Materials.neon(NSColor(calibratedRed: 0.3, green: 1, blue: 0.5, alpha: 1), intensity: 0.2)
 
     private let gyroCenter = SIMD3<Float>(0, 10, -78)
 
@@ -38,7 +40,18 @@ final class OrbitStage: Stage {
     """
 
     override func build() {
-        fogColor = NSColor(calibratedRed: 0.004, green: 0.005, blue: 0.015, alpha: 1)
+        let violet = NSColor(calibratedRed: 0.2, green: 0.06, blue: 0.28, alpha: 1)
+        let teal = NSColor(calibratedRed: 0.04, green: 0.17, blue: 0.24, alpha: 1)
+        let rose = NSColor(calibratedRed: 0.24, green: 0.05, blue: 0.16, alpha: 1)
+        let deepBlue = NSColor(calibratedRed: 0.05, green: 0.08, blue: 0.22, alpha: 1)
+        sky = SkyStyle(zenith: NSColor(calibratedRed: 0.008, green: 0.01, blue: 0.03, alpha: 1),
+                       horizon: NSColor(calibratedRed: 0.03, green: 0.035, blue: 0.08, alpha: 1),
+                       nadir: NSColor(calibratedRed: 0.01, green: 0.012, blue: 0.035, alpha: 1),
+                       glow: NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.13, alpha: 1),
+                       glowWidth: 0.12,
+                       nebulae: SkyStyle.ring(of: 6, v: 0.33, radius: 0.14, colors: [violet, teal, rose])
+                           + SkyStyle.ring(of: 5, v: 0.62, radius: 0.12, colors: [deepBlue, violet], offset: 0.1))
+        fogColor = NSColor(calibratedRed: 0.02, green: 0.025, blue: 0.06, alpha: 1)
         fogStart = 90
         fogEnd = 460
 
@@ -50,7 +63,9 @@ final class OrbitStage: Stage {
         buildPlanet()
         buildFans()
         buildAsteroids()
-        addBaseLights(ambient: NSColor(calibratedRed: 0.45, green: 0.5, blue: 0.65, alpha: 1), ambientIntensity: 120, keyIntensity: 1100)
+        buildStation(at: SIMD3(-50, 16, -125), scale: 1, tilt: SIMD3(0.2, 0.5, 0.1), rate: 0.12)
+        buildStation(at: SIMD3(62, -6, -170), scale: 1.3, tilt: SIMD3(-0.15, -0.6, -0.2), rate: -0.09)
+        addBaseLights(ambient: NSColor(calibratedRed: 0.45, green: 0.5, blue: 0.65, alpha: 1), ambientIntensity: 200, keyIntensity: 1100)
         gyroLight = makeGroupLight(at: SCNVector3(gyroCenter.x, gyroCenter.y, gyroCenter.z + 20), range: 60)
         addStars(count: 1400, radius: 300, minY: -300, seed: 99)
         addDust(color: NSColor(calibratedRed: 0.7, green: 0.85, blue: 1, alpha: 0.3), birthRate: 16)
@@ -60,7 +75,7 @@ final class OrbitStage: Stage {
 
     private func buildRunway(_ mat: SCNMaterial, _ glow: SCNMaterial) {
         let deck = SCNBox(width: 2.9, height: 0.06, length: 62, chamferRadius: 0.02)
-        deck.materials = [Materials.metal(NSColor(calibratedRed: 0.04, green: 0.045, blue: 0.06, alpha: 1), roughness: 0.25, metalness: 0.9)]
+        deck.materials = [Materials.metal(NSColor(calibratedRed: 0.1, green: 0.105, blue: 0.13, alpha: 1), roughness: 0.25, metalness: 0.85)]
         let dn = SCNNode(geometry: deck)
         dn.position = SCNVector3(0, -0.05, -31.5)
         root.addChildNode(dn)
@@ -82,6 +97,27 @@ final class OrbitStage: Stage {
         }
         // The runway's far end: a bright threshold bar.
         h.addChildNode(Stage.segment(SIMD3(-1.45, 0, -62.5), SIMD3(1.45, 0, -62.5), thickness: 0.08, material: mat))
+
+        // Truss under the deck and fins along its sides, so the runway reads as a structure.
+        let frame = Materials.metal(NSColor(calibratedWhite: 0.16, alpha: 1), roughness: 0.35, metalness: 0.85)
+        let tips = groupMaterial(.floor, strength: 0.8)
+        h.addChildNode(Stage.segment(SIMD3(0, -0.9, -1), SIMD3(0, -0.9, -62.5), thickness: 0.3, material: frame))
+        var tz: Float = -2
+        while tz > -62 {
+            for x: Float in [-1.3, 1.3] {
+                h.addChildNode(Stage.segment(SIMD3(x, -0.08, tz), SIMD3(0, -0.9, tz - 2), thickness: 0.08, material: frame))
+                h.addChildNode(Stage.segment(SIMD3(0, -0.9, tz - 2), SIMD3(x, -0.08, tz - 4), thickness: 0.08, material: frame))
+            }
+            tz -= 4
+        }
+        var fz: Float = -6
+        while fz > -62 {
+            for side: Float in [-1, 1] {
+                h.addChildNode(Stage.segment(SIMD3(side * 1.45, -0.05, fz), SIMD3(side * 2.7, -0.35, fz + 0.8), thickness: 0.06, height: 0.25, material: frame))
+                h.addChildNode(Stage.segment(SIMD3(side * 2.65, -0.33, fz + 0.75), SIMD3(side * 2.85, -0.38, fz + 0.9), thickness: 0.09, material: tips))
+            }
+            fz -= 8
+        }
         root.addChildNode(h.flattenedClone())
     }
 
@@ -102,7 +138,7 @@ final class OrbitStage: Stage {
         let band = SCNTorus(ringRadius: radius, pipeRadius: 0.45)
         band.ringSegmentCount = 120
         band.pipeSegmentCount = 6
-        band.materials = [Materials.metal(NSColor(calibratedWhite: 0.05, alpha: 1), roughness: 0.3, metalness: 0.9)]
+        band.materials = [Materials.metal(NSColor(calibratedWhite: 0.12, alpha: 1), roughness: 0.3, metalness: 0.85)]
         let bn = SCNNode(geometry: band)
         bn.scale = SCNVector3(1, 1.6, 1)
         bn.position = SCNVector3(0, -0.2, 0)
@@ -217,7 +253,7 @@ final class OrbitStage: Stage {
 
     private func buildAsteroids() {
         var rng = SeededRandom(seed: 17)
-        let rock = Materials.metal(NSColor(calibratedRed: 0.09, green: 0.085, blue: 0.08, alpha: 1), roughness: 0.9, metalness: 0.15)
+        let rock = Materials.metal(NSColor(calibratedRed: 0.2, green: 0.18, blue: 0.17, alpha: 1), roughness: 0.85, metalness: 0.15)
         let holder = SCNNode()
         var placed = 0
         while placed < 46 {
@@ -241,6 +277,80 @@ final class OrbitStage: Stage {
         }
         let flat = holder.flattenedClone()
         root.addChildNode(flat)
+    }
+
+    /// A space station: a long hub with solar wings and a habitat ring that turns about it.
+    private func buildStation(at position: SIMD3<Float>, scale: Float, tilt: SIMD3<Float>, rate: Double) {
+        let hull = Materials.metal(NSColor(calibratedWhite: 0.32, alpha: 1), roughness: 0.4, metalness: 0.7)
+        let panelMat = Materials.metal(NSColor(calibratedRed: 0.06, green: 0.12, blue: 0.3, alpha: 1), roughness: 0.2, metalness: 0.9)
+        let strip = groupMaterial(.rings, strength: 0.8)
+        let station = SCNNode()
+
+        // Hub along the x axis with docking modules.
+        let fixed = SCNNode()
+        fixed.addChildNode(Stage.segment(SIMD3(-14, 0, 0), SIMD3(14, 0, 0), thickness: 2.4, material: hull))
+        for x: Float in [-8, 0, 8] {
+            let module = SCNCylinder(radius: 1.9, height: 3.5)
+            module.radialSegmentCount = 16
+            module.materials = [hull]
+            let mn = SCNNode(geometry: module)
+            mn.simdPosition = SIMD3(x, 0, 0)
+            mn.eulerAngles.z = .pi / 2
+            fixed.addChildNode(mn)
+            fixed.addChildNode(Stage.segment(SIMD3(x - 1.8, 1.25, 0), SIMD3(x + 1.8, 1.25, 0), thickness: 0.16, material: strip))
+        }
+        // Solar wings at both ends, with a lit seam down each panel.
+        for x: Float in [-12, 12] {
+            for side: Float in [-1, 1] {
+                let wing = SCNBox(width: 3.6, height: 0.12, length: 11, chamferRadius: 0)
+                wing.materials = [panelMat]
+                let wn = SCNNode(geometry: wing)
+                wn.simdPosition = SIMD3(x, 0, side * 7)
+                fixed.addChildNode(wn)
+                fixed.addChildNode(Stage.segment(SIMD3(x, 0, side * 1.2), SIMD3(x, 0, side * 1.5), thickness: 0.3, material: hull))
+                for k in 0..<4 {
+                    let pz = side * (2.2 + Float(k) * 2.6)
+                    fixed.addChildNode(Stage.segment(SIMD3(x - 1.8, 0.08, pz), SIMD3(x + 1.8, 0.08, pz), thickness: 0.05, material: hull))
+                }
+                let bulb = SCNSphere(radius: 0.3)
+                bulb.segmentCount = 8
+                bulb.materials = [beaconMat]
+                let bn = SCNNode(geometry: bulb)
+                bn.simdPosition = SIMD3(x, 0.2, side * 12.6)
+                fixed.addChildNode(bn)
+            }
+        }
+        station.addChildNode(fixed.flattenedClone())
+
+        // Habitat ring around the hub (its axis is the hub), joined by spokes; it turns.
+        let habitat = SCNNode()
+        let ring = SCNTorus(ringRadius: 8.5, pipeRadius: 1.1)
+        ring.ringSegmentCount = 64
+        ring.pipeSegmentCount = 12
+        ring.materials = [hull]
+        habitat.addChildNode(SCNNode(geometry: ring))
+        let lights = SCNTorus(ringRadius: 9.6, pipeRadius: 0.14)
+        lights.ringSegmentCount = 64
+        lights.pipeSegmentCount = 6
+        lights.materials = [strip]
+        habitat.addChildNode(SCNNode(geometry: lights))
+        for k in 0..<4 {
+            let a = Float(k) / 4 * 2 * .pi
+            habitat.addChildNode(Stage.segment(SIMD3(cos(a) * 1.2, 0, sin(a) * 1.2), SIMD3(cos(a) * 7.5, 0, sin(a) * 7.5),
+                                               thickness: 0.45, material: hull))
+        }
+        // Torus axis is y; turn it to lie along the hub (x).
+        let habitatFlat = habitat.flattenedClone()
+        habitatFlat.eulerAngles.z = .pi / 2
+        let spinner = SCNNode()
+        spinner.addChildNode(habitatFlat)
+        station.addChildNode(spinner)
+        habitats.append((spinner, rate))
+
+        station.simdScale = SIMD3(repeating: scale)
+        station.eulerAngles = SCNVector3(CGFloat(tilt.x), CGFloat(tilt.y), CGFloat(tilt.z))
+        station.simdPosition = position
+        root.addChildNode(station)
     }
 
     // MARK: Events
@@ -275,6 +385,10 @@ final class OrbitStage: Stage {
         gyroHolder.simdScale = SIMD3(repeating: Float(gyroScale))
 
         planet.eulerAngles.y = CGFloat(time * 0.01)
+
+        for h in habitats { h.node.eulerAngles.x = CGFloat(time * h.rate) }
+        let blink = time.truncatingRemainder(dividingBy: 2.2)
+        beaconMat.emission.intensity = blink < 0.15 ? 2.6 : 0.2
 
         // The two fans lean across each other above the runway.
         for (group, nodes) in [(LightGroup.leftLasers, leftFan), (LightGroup.rightLasers, rightFan)] {

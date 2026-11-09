@@ -223,6 +223,16 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         scene.fogColor = stage.fogColor
         scene.fogStartDistance = stage.fogStart
         scene.fogEndDistance = stage.fogEnd
+        // The arena's sky is both the backdrop and the light metal surfaces reflect, so
+        // structures read as shapes instead of black holes.
+        if let sky = stage.skyImage {
+            scene.background.contents = sky
+        } else {
+            scene.background.contents = NSColor.black
+        }
+        scene.background.intensity = stage.skyBrightness
+        scene.lightingEnvironment.contents = stage.skyImage
+        scene.lightingEnvironment.intensity = stage.environmentIntensity
     }
 
     // MARK: Mouse aiming (main thread)
@@ -368,6 +378,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         }
 
         stage.update(dt: dt)
+        scene.background.intensity = stage.skyBrightness
         effects.update(dt: dt)
         updateCamera(dt: dt)
     }

@@ -68,25 +68,74 @@ enum StageKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// An arena's sky: a vertical gradient with a glowing band at the horizon and optional
+/// nebula clouds. It is drawn as the background and also lights every metal surface
+/// (image-based lighting), so dark structures pick up the sky's colour instead of
+/// rendering pitch black.
+struct SkyStyle {
+    struct Nebula {
+        /// Position in the lat-long sky image (u: 0...1 around, v: 0 top ... 1 bottom).
+        var u: CGFloat
+        var v: CGFloat
+        /// Radius as a fraction of the image height.
+        var radius: CGFloat
+        var color: NSColor
+    }
+
+    var zenith: NSColor
+    var horizon: NSColor
+    var nadir: NSColor
+    /// Bright band hugging the horizon.
+    var glow: NSColor
+    /// Half height of the glow band as a fraction of the image height.
+    var glowWidth: CGFloat = 0.06
+    var nebulae: [Nebula] = []
+
+    static let night = SkyStyle(
+        zenith: NSColor(calibratedRed: 0.01, green: 0.012, blue: 0.035, alpha: 1),
+        horizon: NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.13, alpha: 1),
+        nadir: NSColor(calibratedRed: 0.01, green: 0.01, blue: 0.025, alpha: 1),
+        glow: NSColor(calibratedRed: 0.12, green: 0.14, blue: 0.3, alpha: 1))
+
+    /// The same nebula repeated at several longitudes, so some of it is always in view.
+    static func ring(of count: Int, v: CGFloat, radius: CGFloat, colors: [NSColor], offset: CGFloat = 0) -> [Nebula] {
+        (0..<count).map { i in
+            Nebula(u: (offset + CGFloat(i) / CGFloat(count)).truncatingRemainder(dividingBy: 1),
+                   v: v + (i % 2 == 0 ? 0 : 0.05), radius: radius * (i % 3 == 0 ? 1.25 : 1),
+                   color: colors[i % colors.count])
+        }
+    }
+}
+
 /// Base class for an environment. It owns the five light groups the beatmap drives
 /// (back, rings, left/right lasers, floor): subclasses build geometry with `groupMaterial`
 /// and animate it in `animate(dt:)`; this class fades every group's colour and brightness.
 class Stage {
     let root = SCNNode()
 
-    /// Scene atmosphere for this arena (applied by the renderer).
-    var fogColor = NSColor(calibratedRed: 0.01, green: 0.012, blue: 0.03, alpha: 1)
+    /// Scene atmosphere for this arena (applied by the renderer). Keep `fogColor` close to the
+    /// sky's horizon so distant geometry melts into the sky rather than into black.
+    var fogColor = NSColor(calibratedRed: 0.04, green: 0.045, blue: 0.1, alpha: 1)
     var fogStart: CGFloat = 28
     var fogEnd: CGFloat = 150
+    var sky = SkyStyle.night
+    /// How strongly the sky lights metal surfaces.
+    var environmentIntensity: CGFloat = 1.5
+    /// The sky image (background + lighting environment), built once after `build()`.
+    private(set) lazy var skyImage: CGImage? = Textures.sky(sky)
+    /// Background brightness for this frame: it swells gently with the back lights.
+    private(set) var skyBrightness: CGFloat = 1
+    /// Lights never fade below this, so the arena stays readable through blackouts.
+    var restGlow: Double = 0.16
 
     private struct GroupState {
-        var color: LightColor = .off
+        var color: LightColor = .blue
         var base: Double = 0
         var flash: Double = 0
         var shown = SIMD3<Float>(0, 0, 0)
     }
 
-    private var materials: [LightGroup: [SCNMaterial]] = [:]
+    private var materials: [LightGroup: [(material: SCNMaterial, strength: CGFloat)]] = [:]
     private var states: [LightGroup: GroupState] = [:]
     private(set) var colors: SaberColorScheme
 
@@ -137,9 +186,11 @@ class Stage {
 
     func setColors(_ c: SaberColorScheme) { colors = c }
 
-    func groupMaterial(_ g: LightGroup, glow: Bool = false, glowOpacity: CGFloat = 0.35) -> SCNMaterial {
+    /// A material lit by light group `g`. `strength` scales its brightness, for secondary
+    /// details (floor seams, window trims) that should follow the group without competing with it.
+    func groupMaterial(_ g: LightGroup, glow: Bool = false, glowOpacity: CGFloat = 0.35, strength: CGFloat = 1) -> SCNMaterial {
         let m = glow ? Materials.glow(.black, intensity: 1, opacity: glowOpacity) : Materials.neon(.black)
-        materials[g]!.append(m)
+        materials[g]!.append((m, strength))
         return m
     }
 
@@ -188,7 +239,7 @@ class Stage {
         for g in LightGroup.allCases {
             var s = states[g]!
             s.flash *= exp(-dt * 5.5)
-            let intensity = Float(s.base * 0.85 + s.flash * 2.4)
+            let intensity = Float(max(s.base * 0.85 + s.flash * 2.4, restGlow))
             let target = lightColor(s.color) * intensity
             let k = Float(1 - exp(-dt * 30))
             s.shown += (target - s.shown) * k
@@ -204,12 +255,13 @@ class Stage {
                 color = NSColor(deviceRed: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: 1)
                 mult = 1
             }
-            for m in materials[g]! {
+            for (m, strength) in materials[g]! {
                 m.emission.contents = color
-                m.emission.intensity = mult * (m.blendMode == .add ? 0.9 : 1.8)
+                m.emission.intensity = mult * (m.blendMode == .add ? 0.9 : 1.8) * strength
             }
             groupDidUpdate(g, color: color, level: CGFloat(maxC))
         }
+        skyBrightness = 0.9 + 0.2 * CGFloat(min(level(.back), 2.5))
         animate(dt: dt)
     }
 
@@ -228,6 +280,27 @@ class Stage {
             n.simdOrientation = simd_quatf(from: SIMD3<Float>(0, 0, 1), to: d / len)
         }
         return n
+    }
+
+    /// A vertical "curtain" hanging from a polyline down to `baseY` (solid mountain or skyline
+    /// silhouettes). Two-sided, so it reads from either side.
+    static func curtain(_ points: [SIMD3<Float>], baseY: Float, material: SCNMaterial) -> SCNNode {
+        guard points.count > 1 else { return SCNNode() }
+        var vertices: [SCNVector3] = []
+        var indices: [Int32] = []
+        for p in points {
+            vertices.append(SCNVector3(p.x, p.y, p.z))
+            vertices.append(SCNVector3(p.x, baseY, p.z))
+        }
+        for i in 0..<(points.count - 1) {
+            let a = Int32(i * 2)
+            indices += [a, a + 1, a + 2, a + 2, a + 1, a + 3]
+        }
+        let g = SCNGeometry(sources: [SCNGeometrySource(vertices: vertices)],
+                            elements: [SCNGeometryElement(indices: indices, primitiveType: .triangles)])
+        material.isDoubleSided = true
+        g.materials = [material]
+        return SCNNode(geometry: g)
     }
 
     /// A neon segment: a solid core plus a wider additive glow shell.
