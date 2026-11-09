@@ -141,10 +141,12 @@ Open **Arena & Colors** from the main menu. The live arena stays visible behind 
 | Arena | Look |
 | --- | --- |
 | **Prism Hall** | Mirrored runway through spinning octagonal prism rings and laser fans |
-| **Sunset Drive** | Scrolling synthwave grid, a striped setting sun, sun rays and wireframe mountains |
-| **Warp Tunnel** | A tunnel of square light frames that twists into a spiral, with hyperspace streaks and a portal |
-| **Neon Skyline** | A skybridge above a neon city, rooftop searchlights and hovering halos under a giant moon |
-| **Orbit** | A floating platform in space, a three-axis gyroscope, a ringed planet and crossing laser fans |
+| **Sunset Drive** | Scrolling synthwave grid, a striped sun setting behind a city skyline, sun rays, solid wireframe mountains and neon palms |
+| **Warp Tunnel** | A tunnel of square light frames that twists into a spiral, inside a cage of hex rings, with hyperspace streaks and a portal |
+| **Neon Skyline** | A skybridge above a neon city of lit windows, billboards, blinking antennas and flying traffic, with searchlights and halos under a giant moon |
+| **Orbit** | A floating platform in a nebula, a three-axis gyroscope, a ringed planet, turning space stations and crossing laser fans |
+
+Sunset Drive, Warp Tunnel, Neon Skyline and Orbit each have a sky that lights their structures, and their lights never fade fully to black, so the space stays readable even during blackouts in the light show.
 
 Each arena has its own colours. Turn on **Custom colors**, pick a template (Classic, Sunset, Synthwave, Toxic, Fire & Ice, Gold & Teal, Bubblegum, Emerald, Inferno, Deep Sea, Royal, Monochrome) or edit any of the four colours (left/right saber, left/right lights) with RGB sliders, a hex code or the system colour picker. Custom colours apply in every arena. You can also switch arenas from the level select screen.
 

@@ -3,8 +3,9 @@ import SceneKit
 import simd
 import SaberCore
 
-/// "Neon Skyline": a floating skybridge high above a night city. Neon-trimmed towers fall away
-/// on both sides, glowing streets run far below, searchlights sweep the sky and three halos
+/// "Neon Skyline": a floating skybridge high above a night city. Neon-trimmed towers with lit
+/// windows, billboards and blinking antennas fall away on both sides, flying traffic streams
+/// between them, glowing streets run far below, searchlights sweep the sky and three halos
 /// hover over the runway under a huge moon.
 ///
 /// Light groups: floor = bridge + streets, rings = tower trim + halos, back = moon,
@@ -23,11 +24,20 @@ final class NeonSkylineStage: Stage {
     private var searchPhase: [LightGroup: Double] = [.leftLasers: 0, .rightLasers: 1.9]
 
     private var cityLight: SCNLight?
+    private let beaconMat = Materials.neon(NSColor(calibratedRed: 1, green: 0.12, blue: 0.15, alpha: 1), intensity: 0.2)
+    private var traffic: [(node: SCNNode, speed: Double, spacing: Double)] = []
+    private var trafficOffset: Double = 0
 
     private let streetY: Float = -70
 
     override func build() {
-        fogColor = NSColor(calibratedRed: 0.02, green: 0.012, blue: 0.045, alpha: 1)
+        sky = SkyStyle(zenith: NSColor(calibratedRed: 0.02, green: 0.015, blue: 0.065, alpha: 1),
+                       horizon: NSColor(calibratedRed: 0.17, green: 0.07, blue: 0.21, alpha: 1),
+                       nadir: NSColor(calibratedRed: 0.2, green: 0.09, blue: 0.12, alpha: 1),
+                       glow: NSColor(calibratedRed: 0.36, green: 0.14, blue: 0.28, alpha: 1),
+                       glowWidth: 0.09)
+        restGlow = 0.16
+        fogColor = NSColor(calibratedRed: 0.1, green: 0.045, blue: 0.13, alpha: 1)
         fogStart = 35
         fogEnd = 270
 
@@ -39,7 +49,8 @@ final class NeonSkylineStage: Stage {
         buildHalos()
         buildSearchlights()
         buildMoon()
-        addBaseLights(ambient: NSColor(calibratedRed: 0.5, green: 0.42, blue: 0.75, alpha: 1), ambientIntensity: 170)
+        buildTraffic()
+        addBaseLights(ambient: NSColor(calibratedRed: 0.5, green: 0.42, blue: 0.75, alpha: 1), ambientIntensity: 230)
         cityLight = makeGroupLight(at: SCNVector3(0, 6, -20), range: 40)
         addStars(count: 350, radius: 260, minY: 40, seed: 5)
         addDust(color: NSColor(calibratedRed: 1, green: 0.8, blue: 0.6, alpha: 0.25), birthRate: 18)
@@ -49,7 +60,7 @@ final class NeonSkylineStage: Stage {
 
     private func buildBridge(_ mat: SCNMaterial, _ glow: SCNMaterial) {
         let deck = SCNBox(width: 3.2, height: 0.3, length: 170, chamferRadius: 0)
-        deck.materials = [Materials.metal(NSColor(calibratedWhite: 0.04, alpha: 1), roughness: 0.3, metalness: 0.75)]
+        deck.materials = [Materials.metal(NSColor(calibratedWhite: 0.09, alpha: 1), roughness: 0.3, metalness: 0.75)]
         let dn = SCNNode(geometry: deck)
         dn.position = SCNVector3(0, -0.16, -84)
         root.addChildNode(dn)
@@ -66,9 +77,16 @@ final class NeonSkylineStage: Stage {
                 z -= 3
             }
         }
+        // Deck seams.
+        let seams = groupMaterial(.floor, strength: 0.3)
+        var sz: Float = -2
+        while sz > -170 {
+            h.addChildNode(Stage.segment(SIMD3(-1.55, 0.002, sz), SIMD3(1.55, 0.002, sz), thickness: 0.025, height: 0.004, material: seams))
+            sz -= 3
+        }
         // Support struts below the deck, fading into the dark.
         var z: Float = -10
-        let strut = Materials.metal(NSColor(calibratedWhite: 0.05, alpha: 1), roughness: 0.4, metalness: 0.8)
+        let strut = Materials.metal(NSColor(calibratedWhite: 0.1, alpha: 1), roughness: 0.4, metalness: 0.8)
         while z > -170 {
             h.addChildNode(Stage.segment(SIMD3(0, -0.3, z), SIMD3(0, -40, z), thickness: 0.6, material: strut))
             z -= 30
@@ -78,7 +96,24 @@ final class NeonSkylineStage: Stage {
 
     private func buildCity(_ streetMat: SCNMaterial, _ streetGlow: SCNMaterial) {
         let trim = groupMaterial(.rings)
-        let body = Materials.metal(NSColor(calibratedRed: 0.025, green: 0.02, blue: 0.04, alpha: 1), roughness: 0.55, metalness: 0.6)
+        let billboardMat = groupMaterial(.back, strength: 0.9)
+        let bodyColor = NSColor(calibratedRed: 0.06, green: 0.05, blue: 0.08, alpha: 1)
+        let roof = Materials.metal(NSColor(calibratedRed: 0.08, green: 0.07, blue: 0.1, alpha: 1), roughness: 0.6, metalness: 0.5)
+        let mast = Materials.metal(NSColor(calibratedWhite: 0.16, alpha: 1), roughness: 0.4, metalness: 0.8)
+        // Facades share a few window materials, bucketed by tower height so floors stay ~3.2 m tall.
+        let windowTiles = [Textures.windows(seed: 3), Textures.windows(seed: 8)]
+        var facades: [Int: SCNMaterial] = [:]
+        func facade(height: Float, variant: Int) -> SCNMaterial {
+            let bucket = max(1, Int((height / 16).rounded()))
+            let key = bucket * 2 + variant
+            if let m = facades[key] { return m }
+            let texSpan: Float = 32 * 3.2 // the tile is 32 floors tall
+            let m = Materials.windowed(body: bodyColor, windows: windowTiles[variant],
+                                       repeats: CGSize(width: 0.5, height: CGFloat(Float(bucket * 16) / texSpan)), intensity: 0.85)
+            facades[key] = m
+            return m
+        }
+        let beacons = SCNNode()
         let city = SCNNode()
         var rng = SeededRandom(seed: 42)
         let columns: [Float] = [10, 22, 36, 52, 70, 92]
@@ -98,7 +133,9 @@ final class NeonSkylineStage: Stage {
                     let bottom: Float = -95
                     let height = top - bottom
                     let box = SCNBox(width: CGFloat(w), height: CGFloat(height), length: CGFloat(d), chamferRadius: 0)
-                    box.materials = [body]
+                    let walls = facade(height: height, variant: Int(rng.next(0, 1.999)))
+                    // Order: front, right, back, left, top, bottom.
+                    box.materials = [walls, walls, walls, walls, roof, roof]
                     let bn = SCNNode(geometry: box)
                     bn.simdPosition = SIMD3(x, bottom + height / 2, z - d / 2)
                     city.addChildNode(bn)
@@ -112,6 +149,34 @@ final class NeonSkylineStage: Stage {
                     // Roof outline.
                     city.addChildNode(Stage.segment(SIMD3(faceX, top, front), SIMD3(faceX, top, back), thickness: 0.12, material: trim))
                     city.addChildNode(Stage.segment(SIMD3(faceX, top, front), SIMD3(faceX + side * w, top, front), thickness: 0.12, material: trim))
+                    // Antenna mast with a blinking beacon on the taller towers.
+                    if top > 12 && rng.next(0, 1) < 0.55 {
+                        let mastTop = top + Float(rng.next(5, 12))
+                        let mx = x + Float(rng.next(-1.5, 1.5)), mz = z - d / 2
+                        city.addChildNode(Stage.segment(SIMD3(mx, top, mz), SIMD3(mx, mastTop, mz), thickness: 0.22, material: mast))
+                        let bulb = SCNSphere(radius: 0.35)
+                        bulb.segmentCount = 8
+                        bulb.materials = [beaconMat]
+                        let bn = SCNNode(geometry: bulb)
+                        bn.simdPosition = SIMD3(mx, mastTop, mz)
+                        beacons.addChildNode(bn)
+                    }
+                    // A billboard on some road-facing walls of the inner columns.
+                    if ci >= 1 && ci <= 3 && top > 10 && rng.next(0, 1) < 0.3 {
+                        let bh = Float(rng.next(4, 7))
+                        let by = top - 4 - bh / 2
+                        let panel = SCNBox(width: 0.12, height: CGFloat(bh), length: CGFloat(d * 0.75), chamferRadius: 0)
+                        panel.materials = [billboardMat]
+                        let pn = SCNNode(geometry: panel)
+                        pn.simdPosition = SIMD3(faceX - side * 0.12, by, z - d / 2)
+                        city.addChildNode(pn)
+                        // Dark frame around it.
+                        let frame = SCNBox(width: 0.08, height: CGFloat(bh + 0.6), length: CGFloat(d * 0.75 + 0.6), chamferRadius: 0)
+                        frame.materials = [roof]
+                        let fn = SCNNode(geometry: frame)
+                        fn.simdPosition = SIMD3(faceX - side * 0.04, by, z - d / 2)
+                        city.addChildNode(fn)
+                    }
                     // Window bands on some towers.
                     if rng.next(0, 1) > 0.45 {
                         var wy = top - 3
@@ -139,6 +204,41 @@ final class NeonSkylineStage: Stage {
             cz -= 34
         }
         root.addChildNode(city.flattenedClone())
+        root.addChildNode(beacons.flattenedClone())
+    }
+
+    /// Lanes of flying cars streaming through the gaps between tower columns and above the roofs:
+    /// white headlights coming towards the player, red tail lights heading away.
+    private func buildTraffic() {
+        let headColor = NSColor(calibratedRed: 1, green: 0.93, blue: 0.82, alpha: 1)
+        let tailColor = NSColor(calibratedRed: 1, green: 0.16, blue: 0.2, alpha: 1)
+        let head = Materials.neon(headColor, intensity: 1.5)
+        let tail = Materials.neon(tailColor, intensity: 1.5)
+        let headGlow = Materials.glow(headColor, intensity: 1, opacity: 0.35)
+        let tailGlow = Materials.glow(tailColor, intensity: 1, opacity: 0.35)
+        let lanes: [(x: Float, y: Float, towards: Bool, spacing: Float)] = [
+            (-44, -12, true, 13), (-45.5, -18, false, 17), (44, -15, false, 15), (45.5, -9, true, 12),
+            (-61, -24, true, 16), (61, -20, false, 14), (-81, -7, false, 18), (81, -30, true, 15),
+            (-26, 46, true, 22), (28, 48.5, false, 19), (-50, 52, false, 24), (52, 50, true, 20),
+        ]
+        for lane in lanes {
+            let n = SCNNode()
+            var z = lane.spacing
+            while z > -290 {
+                for (mat, w, h, l) in [(lane.towards ? head : tail, CGFloat(0.5), CGFloat(0.22), CGFloat(1.5)),
+                                       (lane.towards ? headGlow : tailGlow, CGFloat(1.4), CGFloat(0.9), CGFloat(3))] {
+                    let car = SCNBox(width: w, height: h, length: l, chamferRadius: 0)
+                    car.materials = [mat]
+                    let cn = SCNNode(geometry: car)
+                    cn.simdPosition = SIMD3(lane.x, lane.y, z)
+                    n.addChildNode(cn)
+                }
+                z -= lane.spacing
+            }
+            let flat = n.flattenedClone()
+            root.addChildNode(flat)
+            traffic.append((node: flat, speed: lane.towards ? 20.0 : -16.0, spacing: Double(lane.spacing)))
+        }
     }
 
     private func buildHalos() {
@@ -242,6 +342,15 @@ final class NeonSkylineStage: Stage {
     }
 
     override func animate(dt: Double) {
+        // Antenna beacons blink in a slow double pulse.
+        let blink = time.truncatingRemainder(dividingBy: 1.8)
+        beaconMat.emission.intensity = (blink < 0.12 || (blink > 0.3 && blink < 0.42)) ? 2.4 : 0.2
+
+        trafficOffset += dt
+        for t in traffic {
+            t.node.simdPosition.z = Float((trafficOffset * t.speed).truncatingRemainder(dividingBy: t.spacing))
+        }
+
         haloSpin += (haloSpinTarget - haloSpin) * (1 - exp(-dt * 1.5))
         haloHeight += (haloHeightTarget - haloHeight) * (1 - exp(-dt * 2))
         for (i, h) in halos.enumerated() {
