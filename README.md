@@ -114,11 +114,14 @@ Choose **Set Up Sabers**, then point at the screen, at the ceiling, and at the s
 
 | Key | Action |
 | --- | --- |
-| `Return` | Play / start level |
-| `Esc` or `Space` | Pause / resume (with a 3-2-1 countdown) |
-| `R` | Recenter sabers (point at the screen centre first) |
+| `Return` | Play / start level / play again; in Saber Setup, start and go to the next pose |
+| `Space` | Pause / resume (with a 3-2-1 countdown); in Saber Setup, next pose |
+| `Esc` | Pause / resume; on other screens, back to the main menu |
+| `R` (or `⇧⌘R`) | Recenter sabers (point at the screen centre first) |
 | `F` | Toggle full screen |
 | `⌘K` | Set up sabers |
+
+Motion controls don't count as keyboard or mouse activity, so the game keeps the display awake while it is the frontmost app; once you switch away, the Mac sleeps as usual.
 
 ### Playing from your iPhone
 
@@ -152,33 +155,57 @@ Each arena has its own colours. Turn on **Custom colors**, pick a template (Clas
 
 ### Tuning (Settings)
 
+**Controls**
+
+- **Input**: one of the input modes in the table above.
+- **Hold the AirPods as**: *AirPod in hand* (one bud) or *Closed case*. With the case, **Flip case saber** fixes a saber that points back at you.
+- **AirPod hand**: which hand holds the AirPod saber; the other saber goes in the other hand.
 - **Saber sensitivity**: scales your wrist rotation.
 - **AirPods motion delay**: how late Bluetooth motion arrives. Collisions are checked against where the blocks were when you actually swung.
-- **Audio offset**: shift the music if hits feel early or late.
-- **Lenient cut angles**: accepts cuts within ±75° of the arrow instead of ±60°.
+- **Lenient cut angles** (on by default): accepts cuts within ±75° of the arrow instead of ±60°, and slower swings.
+- **Auto-recenter when a song starts** (on by default).
+- **Keep AirPods awake**: plays a silent stream so a held bud doesn't stop sending motion.
+
+**Audio**
+
 - **Play game audio on**: Mac speakers (recommended, low latency), the system default, or any output device.
+- **Music volume** and **Effects volume**.
+- **Audio offset**: shift the music if hits feel early or late.
+
+**Visuals and gameplay**
+
+- **Bloom & glow**, **Camera shake** and **No Fail**.
 
 ## How it works
 
 ```
 Sources/
   SaberCore/               platform-independent, unit-tested game logic
+    Math.swift               vectors and quaternions (no simd, so the core builds anywhere)
+    Arena.swift              world layout: track, block grid, hit boxes, virtual shoulders
+    Beatmap.swift            hands, cut directions, difficulties, notes and bombs
     Song.swift               arrangement of "Prism Run" (sections, chords, melody)
     MusicSynth.swift         offline synthesizer: drums, bass, pads, arps, lead, FX, reverb/delay
+    SoundEffects.swift       synthesized slice, miss, bomb and menu sounds
     LevelDesigner.swift      rhythm per section/difficulty + swing-flow rules, light show
     Calibration.swift        three-pose calibration, quaternion-convention detection via gravity
     Swing.swift              pose prediction/smoothing for low-rate sensors, swing-arc tracking
+    CaseMotion.swift         closed-case motion: sensor fusion, lid tracking, helper errors
     GameSession.swift        swept blade-vs-block collision, cut validation, misses, bombs
     Scoring.swift            cut score, combo/multiplier, energy, ranks
     Autoplay.swift           perfect-play driver for the demo and tests
     ControllerProtocol.swift phone ↔ Mac wire format (shared with the iPhone app)
     ColorScheme.swift        RGB colours, saber/light colour schemes and templates
   SwiftSaber/              macOS app
+    App/                     app state machine, settings, iPhone-remote commands, code-drawn icon
     Input/                   AirPods motion, iPhone controller server (Bonjour + UDP), calibration flow
+      AirPodsCase/             closed-case session, Bluetooth and audio guard
     Audio/                   AVAudioEngine playback, output-device routing (CoreAudio)
     Render/                  SceneKit arenas (Render/Arenas), blocks (clip-plane shader for real halves), sabers, effects
     UI/                      SwiftUI menus, setup, HUD, pause, results
+Helpers/AirPodsCase/       AirPointer's closed-case Bluetooth helpers (built into the app bundle)
 iOSController/             Swift Saber iPhone app (Xcode project "SaberController"; SwiftUI, Core Motion, Network)
+Scripts/build-app.sh       builds, bundles and ad-hoc signs the Mac app
 ```
 
 AirPods and phones report orientation, not position, so each saber pivots from a virtual shoulder. Aiming moves the blade across the block grid, and swinging through a block cuts it. Blade sweeps between frames are sub-sampled, so fast swings still connect at low sensor rates.
