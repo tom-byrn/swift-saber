@@ -94,9 +94,11 @@ struct SkyStyle {
     /// The same nebula repeated at several longitudes, so some of it is always in view.
     static func ring(of count: Int, v: CGFloat, radius: CGFloat, colors: [NSColor], offset: CGFloat = 0) -> [Nebula] {
         (0..<count).map { i in
-            Nebula(u: (offset + CGFloat(i) / CGFloat(count)).truncatingRemainder(dividingBy: 1),
-                   v: v + (i % 2 == 0 ? 0 : 0.05), radius: radius * (i % 3 == 0 ? 1.25 : 1),
-                   color: colors[i % colors.count])
+            let u = (offset + CGFloat(i) / CGFloat(count)).truncatingRemainder(dividingBy: 1)
+            let dv: CGFloat = (i % 2 == 0) ? 0 : 0.05
+            let scale: CGFloat = (i % 3 == 0) ? 1.25 : 1
+            return Nebula(u: u, v: v + dv, radius: radius * scale,
+                          color: colors[i % colors.count])
         }
     }
 }
