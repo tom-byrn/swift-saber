@@ -16,16 +16,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: spm-macos-15-${{ hashFiles('Package.swift', 'Sources/SaberCore/**', 'Tests/**', 'Helpers/**') }}
+          key: spm-macos-15-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Helpers/**', 'Resources/**') }}
           restore-keys: spm-macos-15-
       - name: Toolchain
         run: |
           sudo xcode-select -s /Applications/Xcode_16.4.app || true
           swift --version
       - name: Warm phone simulator (background)
-        # Boot the simulator, build and install the controller app while the Mac app
-        # compiles. On a cold runner this serial sequence takes ~4 minutes; overlapped
-        # here it costs nothing. Markers let the smoke test know when it is ready.
+        # Boot the simulator while the package compiles. Boot is mostly disk I/O, so it
+        # does not steal CPU from swift test; building the controller app here did
+        # (11.9 min test step), so that stays a separate serial step. Markers let the
+        # smoke test know when the boot is done.
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)
           if [ -z "$UDID" ]; then
@@ -38,9 +39,6 @@ jobs:
             set -e
             xcrun simctl boot "$0" || true
             xcrun simctl bootstatus "$0" -b
-            xcodebuild -project iOSController/SaberController.xcodeproj -target SaberController \
-              -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
-            xcrun simctl install "$0" iOSController/build/Debug-iphonesimulator/SaberController.app
             rm -f /tmp/sim-warming
             touch /tmp/sim-ready
           ' "$UDID" > /tmp/sim-warm.log 2>&1 &
@@ -88,7 +86,7 @@ jobs:
             fi
             xcrun simctl boot "$UDID" || true
             xcrun simctl bootstatus "$UDID" -b || true
-            [ -f /tmp/sim-ready ] || xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
+            xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
             xcrun simctl launch "$UDID" app.swiftsaber.controller || true
           fi
           "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
