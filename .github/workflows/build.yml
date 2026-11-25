@@ -130,26 +130,29 @@ jobs:
           # keep the serial path as a fallback.
           preview_cycle() {
             local udid="$1"
+            # Every simctl call gets a hard timeout: a hung terminate/launch on a
+            # flaky simulator once stalled this cycle past the job's 30m limit.
+            sim() { timeout 60 xcrun simctl "$@" || true; }
             for hand in right left; do
-              xcrun simctl terminate "$udid" app.swiftsaber.controller || true
-              xcrun simctl launch "$udid" app.swiftsaber.controller --preview-$hand || true
+              sim terminate "$udid" app.swiftsaber.controller
+              sim launch "$udid" app.swiftsaber.controller --preview-$hand
               sleep 3
-              xcrun simctl io "$udid" screenshot "captures/phone-preview-$hand.png" || true
+              sim io "$udid" screenshot "captures/phone-preview-$hand.png"
             done
             # Every remote screen with sample data, plus the hold-to-pause ring mid-hold.
             for screen in menu levelSelect customize settings calibration countdown playing paused results; do
-              xcrun simctl terminate "$udid" app.swiftsaber.controller || true
-              xcrun simctl launch "$udid" app.swiftsaber.controller --preview-left --preview $screen || true
+              sim terminate "$udid" app.swiftsaber.controller
+              sim launch "$udid" app.swiftsaber.controller --preview-left --preview $screen
               sleep 2
-              xcrun simctl io "$udid" screenshot "captures/phone-remote-$screen.png" || true
+              sim io "$udid" screenshot "captures/phone-remote-$screen.png"
             done
-            xcrun simctl terminate "$udid" app.swiftsaber.controller || true
-            xcrun simctl launch "$udid" app.swiftsaber.controller --preview-left --preview playing --preview-hold || true
+            sim terminate "$udid" app.swiftsaber.controller
+            sim launch "$udid" app.swiftsaber.controller --preview-left --preview playing --preview-hold
             sleep 3
-            xcrun simctl io "$udid" screenshot "captures/phone-remote-holding.png" || true
-            xcrun simctl terminate "$udid" app.swiftsaber.controller || true
+            sim io "$udid" screenshot "captures/phone-remote-holding.png"
+            sim terminate "$udid" app.swiftsaber.controller
             sleep 2
-            xcrun simctl io "$udid" screenshot "captures/phone-home.png" || true
+            sim io "$udid" screenshot "captures/phone-home.png"
           }
           TAIL_PID=""
           SIM2="${SIM2_UDID:-}"
