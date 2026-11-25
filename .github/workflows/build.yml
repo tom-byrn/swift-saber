@@ -45,20 +45,33 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_16.4.app || true
           swift --version
       - name: Warm phone simulator (background)
-        # Boot the simulator while the package compiles. Boot is mostly disk I/O, so it
+        # Boot two simulators while the package compiles. Boot is mostly disk I/O, so it
         # does not steal CPU from swift test; building the controller app here did
-        # (11.9 min test step), so that stays a separate serial step. Markers let the
-        # smoke test know when the boot is done.
+        # (11.9 min test step), so that stays a separate serial step. The second
+        # simulator lets the smoke test run its preview-screen screenshot cycle
+        # concurrently with the demo instead of after it. Markers let the smoke test
+        # know when each boot is done.
         run: |
-          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)
+          readarray -t UDIDS < <(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; us=[x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")]; print("\n".join(us[:2]))' || true)
+          UDID="${UDIDS[0]:-}"
+          UDID2="${UDIDS[1]:-}"
           if [ -z "$UDID" ]; then
             echo "no simulator available; skipping warm-up"
             exit 0
           fi
           echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          if [ -n "$UDID2" ] && [ "$UDID2" != "$UDID" ]; then
+            echo "SIM2_UDID=$UDID2" >> "$GITHUB_ENV"
+            touch /tmp/sim2-warming
+            nohup bash -c '
+              xcrun simctl boot "$0" || true
+              xcrun simctl bootstatus "$0" -b
+              rm -f /tmp/sim2-warming
+              touch /tmp/sim2-ready
+            ' "$UDID2" > /tmp/sim2-warm.log 2>&1 &
+          fi
           touch /tmp/sim-warming
           nohup bash -c '
-            set -e
             xcrun simctl boot "$0" || true
             xcrun simctl bootstatus "$0" -b
             rm -f /tmp/sim-warming
@@ -111,6 +124,51 @@ jobs:
           fi
           "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
           PID=$!
+          # The preview-screen screenshot cycle only needs the controller app and a
+          # simulator, not the demo: run it concurrently on the second simulator and
+          # keep the serial path as a fallback.
+          preview_cycle() {
+            local udid="$1"
+            for hand in right left; do
+              xcrun simctl terminate "$udid" app.swiftsaber.controller || true
+              xcrun simctl launch "$udid" app.swiftsaber.controller --preview-$hand || true
+              sleep 3
+              xcrun simctl io "$udid" screenshot "captures/phone-preview-$hand.png" || true
+            done
+            # Every remote screen with sample data, plus the hold-to-pause ring mid-hold.
+            for screen in menu levelSelect customize settings calibration countdown playing paused results; do
+              xcrun simctl terminate "$udid" app.swiftsaber.controller || true
+              xcrun simctl launch "$udid" app.swiftsaber.controller --preview-left --preview $screen || true
+              sleep 2
+              xcrun simctl io "$udid" screenshot "captures/phone-remote-$screen.png" || true
+            done
+            xcrun simctl terminate "$udid" app.swiftsaber.controller || true
+            xcrun simctl launch "$udid" app.swiftsaber.controller --preview-left --preview playing --preview-hold || true
+            sleep 3
+            xcrun simctl io "$udid" screenshot "captures/phone-remote-holding.png" || true
+            xcrun simctl terminate "$udid" app.swiftsaber.controller || true
+            sleep 2
+            xcrun simctl io "$udid" screenshot "captures/phone-home.png" || true
+          }
+          TAIL_PID=""
+          SIM2="${SIM2_UDID:-}"
+          if [ -n "$SIM2" ] && [ -n "$UDID" ]; then
+            (
+              for i in $(seq 1 120); do
+                [ -f /tmp/sim2-ready ] && break
+                [ -f /tmp/sim2-warming ] || break
+                sleep 1
+              done
+              if [ -f /tmp/sim2-ready ]; then
+                xcrun simctl install "$SIM2" iOSController/build/Debug-iphonesimulator/SaberController.app || true
+                preview_cycle "$SIM2"
+              else
+                touch /tmp/sim2-failed
+              fi
+            ) > captures/preview-cycle.log 2>&1 &
+            TAIL_PID=$!
+            echo "preview cycle running in background on $SIM2"
+          fi
           # The game logs "phone-shot: <screen>" once each screen has been mirrored to the
           # phone (it navigates with the same remote commands the phone sends).
           SHOT=0
@@ -131,31 +189,18 @@ jobs:
           tail -60 captures/app.log
           if [ -n "$UDID" ]; then
             # Phone-side connection log, to diagnose discovery problems.
-            xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate 'eventMessage CONTAINS "SaberRemote"' > captures/phone.log 2>&1 || true
+            xcrun simctl spawn "$UDID" log show --last 2m --style compact --predicate 'eventMessage CONTAINS "SaberRemote"' > captures/phone.log 2>&1 || true
             tail -40 captures/phone.log
           fi
-          if [ -n "$UDID" ]; then
-            for hand in right left; do
-              xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
-              xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-$hand || true
-              sleep 3
-              xcrun simctl io "$UDID" screenshot "captures/phone-preview-$hand.png" || true
-            done
-            # Every remote screen with sample data, plus the hold-to-pause ring mid-hold.
-            for screen in menu levelSelect customize settings calibration countdown playing paused results; do
-              xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
-              xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-left --preview $screen || true
-              sleep 2
-              xcrun simctl io "$UDID" screenshot "captures/phone-remote-$screen.png" || true
-            done
-            xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
-            xcrun simctl launch "$UDID" app.swiftsaber.controller --preview-left --preview playing --preview-hold || true
-            sleep 3
-            xcrun simctl io "$UDID" screenshot "captures/phone-remote-holding.png" || true
-            xcrun simctl terminate "$UDID" app.swiftsaber.controller || true
-            sleep 2
-            xcrun simctl io "$UDID" screenshot "captures/phone-home.png" || true
+          if [ -n "$TAIL_PID" ]; then
+            wait "$TAIL_PID" || true
+            tail -5 captures/preview-cycle.log 2>/dev/null || true
           fi
+          if [ ! -f /tmp/sim2-failed ] && [ -z "$TAIL_PID" ] && [ -n "$UDID" ]; then
+            # Fallback: no second simulator, run the cycle serially as before.
+            preview_cycle "$UDID"
+          fi
+          [ -f /tmp/sim2-failed ] && echo "second simulator did not boot; preview screenshots may be missing"
           ls -la captures
       - uses: actions/upload-artifact@v4
         if: always()
