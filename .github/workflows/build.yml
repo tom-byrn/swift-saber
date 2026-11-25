@@ -18,8 +18,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: spm-macos-15-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Helpers/**', 'Resources/**') }}
-          restore-keys: spm-macos-15-
+          key: spm-tests-macos-15-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Helpers/**', 'Resources/**') }}
+          restore-keys: spm-tests-macos-15-
       - name: Toolchain
         run: |
           sudo xcode-select -s /Applications/Xcode_16.4.app || true
@@ -36,8 +36,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .build
-          key: spm-macos-15-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Helpers/**', 'Resources/**') }}
-          restore-keys: spm-macos-15-
+          # Separate key from the tests job: with one shared key the two concurrent
+          # jobs race to save and only the debug build ever gets cached.
+          key: spm-build-macos-15-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Helpers/**', 'Resources/**') }}
+          restore-keys: spm-build-macos-15-
       - name: Toolchain
         run: |
           sudo xcode-select -s /Applications/Xcode_16.4.app || true
