@@ -7,6 +7,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  tests:
+    # Unit tests only: independent of the app bundle build and the smoke test,
+    # so they run in parallel instead of adding ~5 minutes serially.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-macos-15-${{ hashFiles('Package.swift', 'Sources/**', 'Tests/**', 'Helpers/**', 'Resources/**') }}
+          restore-keys: spm-macos-15-
+      - name: Toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app || true
+          swift --version
+      - name: Test core
+        run: swift test
+
   build:
     runs-on: macos-15
     timeout-minutes: 30
@@ -43,8 +63,6 @@ jobs:
             touch /tmp/sim-ready
           ' "$UDID" > /tmp/sim-warm.log 2>&1 &
           echo "warm-up running in background for $UDID"
-      - name: Test core
-        run: swift test
       - name: Build app bundle
         run: ./Scripts/build-app.sh
       - name: Render iPhone app icon
