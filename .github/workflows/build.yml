@@ -52,9 +52,10 @@ jobs:
         # concurrently with the demo instead of after it. Markers let the smoke test
         # know when each boot is done.
         run: |
-          readarray -t UDIDS < <(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; us=[x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")]; print("\n".join(us[:2]))' || true)
-          UDID="${UDIDS[0]:-}"
-          UDID2="${UDIDS[1]:-}"
+          # /bin/bash on runners lacks readarray; parse two lines portably.
+          UDIDS=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; us=[x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")]; print("\n".join(us[:2]))' || true)
+          UDID=$(printf '%s\n' "$UDIDS" | sed -n '1p')
+          UDID2=$(printf '%s\n' "$UDIDS" | sed -n '2p')
           if [ -z "$UDID" ]; then
             echo "no simulator available; skipping warm-up"
             exit 0
