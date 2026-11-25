@@ -130,9 +130,21 @@ jobs:
           # keep the serial path as a fallback.
           preview_cycle() {
             local udid="$1"
-            # Every simctl call gets a hard timeout: a hung terminate/launch on a
-            # flaky simulator once stalled this cycle past the job's 30m limit.
-            sim() { timeout 60 xcrun simctl "$@" || true; }
+            # Every simctl call gets a hard timeout: a hung terminate/launch on a flaky
+            # simulator once stalled this cycle past the job limit. macOS has no
+            # timeout(1); kill the process from the shell instead.
+            sim() {
+              xcrun simctl "$@" &
+              local p=$!
+              (
+                sleep 60
+                kill "$p" 2>/dev/null || true
+              ) &
+              local w=$!
+              wait "$p" || true
+              kill "$w" 2>/dev/null || true
+              wait "$w" 2>/dev/null || true
+            }
             for hand in right left; do
               sim terminate "$udid" app.swiftsaber.controller
               sim launch "$udid" app.swiftsaber.controller --preview-$hand
