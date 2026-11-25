@@ -22,6 +22,29 @@ jobs:
         run: |
           sudo xcode-select -s /Applications/Xcode_16.4.app || true
           swift --version
+      - name: Warm phone simulator (background)
+        # Boot the simulator, build and install the controller app while the Mac app
+        # compiles. On a cold runner this serial sequence takes ~4 minutes; overlapped
+        # here it costs nothing. Markers let the smoke test know when it is ready.
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)
+          if [ -z "$UDID" ]; then
+            echo "no simulator available; skipping warm-up"
+            exit 0
+          fi
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          touch /tmp/sim-warming
+          nohup bash -c '
+            set -e
+            xcrun simctl boot "$0" || true
+            xcrun simctl bootstatus "$0" -b
+            xcodebuild -project iOSController/SaberController.xcodeproj -target SaberController \
+              -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+            xcrun simctl install "$0" iOSController/build/Debug-iphonesimulator/SaberController.app
+            rm -f /tmp/sim-warming
+            touch /tmp/sim-ready
+          ' "$UDID" > /tmp/sim-warm.log 2>&1 &
+          echo "warm-up running in background for $UDID"
       - name: Test core
         run: swift test
       - name: Build app bundle
@@ -51,12 +74,21 @@ jobs:
           mkdir -p captures
           # Boot an iPhone simulator running Saber Controller; it shares the Mac's network,
           # so it should discover the game over Bonjour and connect.
-          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)
+          UDID="${SIM_UDID:-$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k,v in d.items() if "iOS" in k for x in v if x["name"].startswith("iPhone")))' || true)}"
           echo "Simulator: $UDID"
           if [ -n "$UDID" ]; then
+            # Wait for the background warm-up (boot + controller build + install).
+            for i in $(seq 1 180); do
+              [ -f /tmp/sim-ready ] && break
+              [ -f /tmp/sim-warming ] || break
+              sleep 1
+            done
+            if [ ! -f /tmp/sim-ready ]; then
+              echo "warm-up did not finish; falling back:"; tail -20 /tmp/sim-warm.log 2>/dev/null || true
+            fi
             xcrun simctl boot "$UDID" || true
             xcrun simctl bootstatus "$UDID" -b || true
-            xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
+            [ -f /tmp/sim-ready ] || xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
             xcrun simctl launch "$UDID" app.swiftsaber.controller || true
           fi
           "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
