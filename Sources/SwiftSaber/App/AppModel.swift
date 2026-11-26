@@ -559,34 +559,44 @@ final class AppModel: ObservableObject {
             self.handleRemote(.watchDemo)
             phoneShot("countdown", after: 0.9)
         }
-        // Countdown takes ~2.3 s; then song time ≈ wall time.
-        let start = t0 + 8 + 2.4
-        // Song-phase captures are scheduled in wall time: song moment t arrives at t/sp.
-        let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
-        for (t, name) in shots {
-            main.asyncAfter(deadline: .now() + start + t / sp) { capture(name) }
-        }
-        main.asyncAfter(deadline: .now() + start + 30 / sp) { phoneShot("playing", after: 0) }
-        main.asyncAfter(deadline: .now() + start + 82 / sp) {
-            self.handleRemote(.pause)
-            phoneShot("paused")
-        }
-        main.asyncAfter(deadline: .now() + start + 85 / sp) {
-            capture("9-paused")
-        }
-        main.asyncAfter(deadline: .now() + start + 88 / sp) {
-            if let r = self.renderer.currentResults() {
-                self.results = r
-                self.renderer.returnToMenu()
-                self.screen = .results
+        // Song phase, event-driven: fire each step when the song clock reaches it.
+        // The previous wall-clock schedule lost captures on slow runners: each capture
+        // blocks the main queue for seconds, deadlines pass un-fired, and everything
+        // bunches at the end (phone mirrors could be skipped entirely). Driving off the
+        // song clock makes every step fire exactly once, whatever the runner's speed;
+        // at speed sp the song itself takes 95/sp seconds of wall time.
+        var fired: Set<String> = []
+        var pausedAt: Date?
+        let marks: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"),
+                                         (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
+        _ = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
+            let now = Date()
+            if let p = pausedAt {
+                // After the pause the clock is frozen; finish on wall time so the CI
+                // screenshot loop has time to mirror the last screens before exit.
+                if now >= p + 3 && !fired.contains("9-paused") { fired.insert("9-paused"); capture("9-paused") }
+                if now >= p + 6 && !fired.contains("results") {
+                    fired.insert("results")
+                    if let r = self.renderer.currentResults() {
+                        self.results = r
+                        self.renderer.returnToMenu()
+                        self.screen = .results
+                    }
+                    phoneShot("results", after: 1.5)
+                }
+                if now >= p + 7.5 && !fired.contains("10-results") { fired.insert("10-results"); capture("10-results") }
+                if now >= p + 12 { timer.invalidate(); NSApp.terminate(nil) }
+                return
             }
-            phoneShot("results", after: 1.5)
-        }
-        main.asyncAfter(deadline: .now() + start + 91 / sp) {
-            capture("10-results")
-        }
-        main.asyncAfter(deadline: .now() + start + 95 / sp) {
-            NSApp.terminate(nil)
+            guard let t = self.renderer.currentSongTime() else { return }
+            for (m, name) in marks where t >= m && !fired.contains(name) { fired.insert(name); capture(name) }
+            if t >= 30 && !fired.contains("playing") { fired.insert("playing"); phoneShot("playing", after: 0) }
+            if t >= 82 && !fired.contains("pause") {
+                fired.insert("pause")
+                pausedAt = now
+                self.handleRemote(.pause)
+                phoneShot("paused")
+            }
         }
     }
 

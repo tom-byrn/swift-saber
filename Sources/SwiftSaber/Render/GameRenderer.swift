@@ -60,6 +60,16 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     /// clock at this rate. See DemoOptions.songSpeed.
     var songSpeed: Double = 1
 
+    /// Current song position (nil before playback / after returning to the menu).
+    var currentSongTime: Double? {
+        lock.lock(); defer { lock.unlock() }
+        switch mode {
+        case .playing: return clock.time
+        case .countdown, .paused: return frozenTime
+        case .menu, .ended: return nil
+        }
+    }
+
     let view = GameSCNView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), options: nil)
     let scene = SCNScene()
     private let cameraNode = SCNNode()
