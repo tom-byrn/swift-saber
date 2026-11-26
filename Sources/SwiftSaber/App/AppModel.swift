@@ -479,6 +479,8 @@ final class AppModel: ObservableObject {
 
     private func runDemoCapture(to dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let sp = DemoOptions.songSpeed
+        renderer.songSpeed = sp
         func capture(_ name: String) {
             if let tiff = renderer.snapshot().tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
                let png = rep.representation(using: .png, properties: [:]) {
@@ -559,19 +561,20 @@ final class AppModel: ObservableObject {
         }
         // Countdown takes ~2.3 s; then song time ≈ wall time.
         let start = t0 + 8 + 2.4
+        // Song-phase captures are scheduled in wall time: song moment t arrives at t/sp.
         let shots: [(Double, String)] = [(10, "3-intro"), (24, "4-groove"), (40, "5-build"), (47.5, "6-drop"), (55, "7-drop"), (80, "8-breakdown")]
         for (t, name) in shots {
-            main.asyncAfter(deadline: .now() + start + t) { capture(name) }
+            main.asyncAfter(deadline: .now() + start + t / sp) { capture(name) }
         }
-        main.asyncAfter(deadline: .now() + start + 30) { phoneShot("playing", after: 0) }
-        main.asyncAfter(deadline: .now() + start + 82) {
+        main.asyncAfter(deadline: .now() + start + 30 / sp) { phoneShot("playing", after: 0) }
+        main.asyncAfter(deadline: .now() + start + 82 / sp) {
             self.handleRemote(.pause)
             phoneShot("paused")
         }
-        main.asyncAfter(deadline: .now() + start + 85) {
+        main.asyncAfter(deadline: .now() + start + 85 / sp) {
             capture("9-paused")
         }
-        main.asyncAfter(deadline: .now() + start + 88) {
+        main.asyncAfter(deadline: .now() + start + 88 / sp) {
             if let r = self.renderer.currentResults() {
                 self.results = r
                 self.renderer.returnToMenu()
@@ -579,10 +582,10 @@ final class AppModel: ObservableObject {
             }
             phoneShot("results", after: 1.5)
         }
-        main.asyncAfter(deadline: .now() + start + 91) {
+        main.asyncAfter(deadline: .now() + start + 91 / sp) {
             capture("10-results")
         }
-        main.asyncAfter(deadline: .now() + start + 95) {
+        main.asyncAfter(deadline: .now() + start + 95 / sp) {
             NSApp.terminate(nil)
         }
     }

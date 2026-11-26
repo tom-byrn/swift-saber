@@ -109,7 +109,7 @@ jobs:
             xcrun simctl install "$UDID" iOSController/build/Debug-iphonesimulator/SaberController.app || true
             xcrun simctl launch "$UDID" app.swiftsaber.controller || true
           fi
-          "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" > captures/app.log 2>&1 &
+          "build/Swift Saber.app/Contents/MacOS/SwiftSaber" --demo-capture "$PWD/captures" --demo-speed 2 > captures/app.log 2>&1 &
           PID=$!
           # The game logs "phone-shot: <screen>" once each screen has been mirrored to the
           # phone (it navigates with the same remote commands the phone sends).
