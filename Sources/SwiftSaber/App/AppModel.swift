@@ -588,7 +588,7 @@ final class AppModel: ObservableObject {
                 if now >= p + 12 { timer.invalidate(); NSApp.terminate(nil) }
                 return
             }
-            guard let t = self.renderer.currentSongTime() else { return }
+            guard let t = self.renderer.currentSongTime else { return }
             for (m, name) in marks where t >= m && !fired.contains(name) { fired.insert(name); capture(name) }
             if t >= 30 && !fired.contains("playing") { fired.insert("playing"); phoneShot("playing", after: 0) }
             if t >= 82 && !fired.contains("pause") {
