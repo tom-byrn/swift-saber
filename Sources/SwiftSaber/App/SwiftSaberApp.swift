@@ -19,12 +19,19 @@ enum Launcher {
         if let i = args.firstIndex(of: "--demo-capture"), i + 1 < args.count {
             DemoOptions.captureDirectory = URL(fileURLWithPath: args[i + 1])
         }
+        if let i = args.firstIndex(of: "--demo-speed"), i + 1 < args.count, let s = Double(args[i + 1]), s > 0 {
+            DemoOptions.songSpeed = s
+        }
         SwiftSaberApp.main()
     }
 }
 
 enum DemoOptions {
     static var captureDirectory: URL?
+    /// Playback speed for CI capture runs. Above 1 the song clock free-runs from the
+    /// wall clock at this rate (music stays silent — only screenshots care), so the
+    /// capture run finishes proportionally sooner. Player sessions never set this.
+    static var songSpeed: Double = 1
 }
 
 struct SwiftSaberApp: App {

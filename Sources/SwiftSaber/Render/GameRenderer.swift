@@ -56,6 +56,20 @@ struct SongClock {
 final class GameRenderer: NSObject, SCNSceneRendererDelegate {
     enum Mode { case menu, countdown, playing, paused, ended }
 
+    /// CI capture mode: >1 skips music and advances the song clock from the wall
+    /// clock at this rate. See DemoOptions.songSpeed.
+    var songSpeed: Double = 1
+
+    /// Current song position (nil before playback / after returning to the menu).
+    var currentSongTime: Double? {
+        lock.lock(); defer { lock.unlock() }
+        switch mode {
+        case .playing: return clock.time
+        case .countdown, .paused: return frozenTime
+        case .menu, .ended: return nil
+        }
+    }
+
     let view = GameSCNView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), options: nil)
     let scene = SCNScene()
     private let cameraNode = SCNNode()
@@ -274,7 +288,9 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         lock.lock(); defer { lock.unlock() }
         guard session != nil else { return }
         session?.resetTracking()
-        audio.playMusicFromStart()
+        // At songSpeed > 1 the audio clock cannot run fast, so stay silent and let
+        // the render loop drive the clock; screenshots only need the visuals.
+        if songSpeed == 1 { audio.playMusicFromStart() }
         clock = SongClock()
         clock.running = true
         mode = .playing
@@ -353,7 +369,7 @@ final class GameRenderer: NSObject, SCNSceneRendererDelegate {
         // Song time for this frame.
         var songTime: Double?
         switch mode {
-        case .playing: songTime = clock.advance(dt: dt, audioTime: audio.songTime())
+        case .playing: songTime = clock.advance(dt: dt * songSpeed, audioTime: songSpeed == 1 ? audio.songTime() : nil)
         case .countdown, .paused: songTime = frozenTime
         case .menu, .ended: songTime = nil
         }
